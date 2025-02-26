@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaspa ($KAS) Risk Metrics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        .chart-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Kaspa ($KAS) Risk Metrics</h1>
+    <div class="chart-container">
+        <canvas id="kaspaChart"></canvas>
+    </div>
+
+    <script>
+        // Initialize the chart
+        const ctx = document.getElementById('kaspaChart').getContext('2d');
+        let kaspaChart;
+
+        // Fetch historical data for initial chart load
+        async function fetchHistoricalData() {
+            const response = await fetch('https://kas-risk-app.onrender.com/data/historical');
+            const data = await response.json();
+            return data;
+        }
+
+        // Fetch live data for updates
+        async function fetchLiveData() {
+            const response = await fetch('https://kas-risk-app.onrender.com/data/live');
+            const data = await response.json();
+            return data;
+        }
+
+        // Render the chart
+        function renderChart(historicalData) {
+            kaspaChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: historicalData.dates,
+                    datasets: [
+                        {
+                            label: 'Price ($KAS)',
+                            data: historicalData.prices,
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            yAxisID: 'price',
+                        },
+                        {
+                            label: 'Risk',
+                            data: historicalData.risks,
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            yAxisID: 'risk',
+                        }
+                    ]
+                },
+                options: {
+                    scales: {
+                        price: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Price ($KAS)'
+                            }
+                        },
+                        risk: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Risk'
+                            },
+                            grid: {
+                                drawOnChartArea: false, // Only show grid for the left axis
+                            }
+                        }
+                    },
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Kaspa ($KAS) Price and Risk Over Time'
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update the chart with live data
+        async function updateChart() {
+            const liveData = await fetchLiveData();
+
+            // Add new data point to the chart
+            kaspaChart.data.labels.push(liveData.latest_date);
+            kaspaChart.data.datasets[0].data.push(liveData.latest_price); // Price
+            kaspaChart.data.datasets[1].data.push(liveData.volatility);  // Risk
+
+            // Remove the oldest data point if the chart gets too crowded
+            if (kaspaChart.data.labels.length > 100) {
+                kaspaChart.data.labels.shift();
+                kaspaChart.data.datasets[0].data.shift();
+                kaspaChart.data.datasets[1].data.shift();
+            }
+
+            // Update the chart
+            kaspaChart.update();
+        }
+
+        // Initialize the chart and start live updates
+        async function init() {
+            const historicalData = await fetchHistoricalData();
+            renderChart(historicalData);
+
+            // Update the chart every 5 seconds
+            setInterval(updateChart, 5000);
+        }
+
+        // Start the app
+        init();
+    </script>
+</body>
+</html>
