@@ -47,7 +47,7 @@ def fetch_kaspa_data():
 
         # Calculate risk metrics
         df['daily_return'] = df['price'].pct_change()
-        volatility = df['daily_return'].std()
+        df['volatility'] = df['daily_return'].rolling(window=7).std()  # 7-day rolling volatility
         df['cumulative_return'] = (1 + df['daily_return']).cumprod()
         df['drawdown'] = df['cumulative_return'] / df['cumulative_return'].cummax() - 1
         max_drawdown = df['drawdown'].min()
@@ -63,7 +63,7 @@ def fetch_kaspa_data():
             'latest_price': round(df['price'].iloc[-1], 6),                    # Price (rounded)
             'latest_volume': round(df['volume'].iloc[-1], 2),                  # Volume (rounded)
             'max_drawdown': round(max_drawdown, 4),                           # Max drawdown (rounded)
-            'volatility': round(volatility, 4),                               # Volatility (rounded)
+            'volatility': round(df['volatility'].iloc[-1], 4),                # Volatility (rounded)
             'price_change_24h': round(price_change_24h, 2),                   # 24h price change (rounded)
             'price_change_7d': round(price_change_7d, 2)                      # 7d price change (rounded)
         }
