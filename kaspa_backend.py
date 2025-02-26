@@ -10,6 +10,7 @@ Original file is located at
 from flask import Flask, jsonify
 import requests
 import pandas as pd
+import os
 from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__)
@@ -66,8 +67,8 @@ def get_data():
     return jsonify(latest_data)
 
 if __name__ == '__main__':
-    fetch_data()  # Fetch data immediately on startup
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))  # Use Render's PORT or default to 5000
+    app.run(host='0.0.0.0', port=port, debug=True)
 
 
 import requests
