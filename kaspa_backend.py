@@ -11,51 +11,65 @@ latest_data = {}
 
 def fetch_kaspa_data():
     global latest_data
-    # CoinGecko API endpoint for Kaspa (KAS)
-    url = "https://api.coingecko.com/api/v3/coins/kaspa/market_chart"
+    try:
+        # CoinGecko API endpoint for Kaspa (KAS)
+        url = "https://api.coingecko.com/api/v3/coins/kaspa/market_chart"
 
-    # Parameters for the API request
-    params = {
-        'vs_currency': 'usd',  # Currency to compare against (USD)
-        'days': '365',         # Number of days of historical data
-        'interval': 'daily'    # Data interval (daily)
-    }
+        # Parameters for the API request
+        params = {
+            'vs_currency': 'usd',  # Currency to compare against (USD)
+            'days': '365',         # Number of days of historical data
+            'interval': 'daily'    # Data interval (daily)
+        }
 
-    # Make the API request
-    response = requests.get(url, params=params)
-    data = response.json()
+        # Make the API request
+        response = requests.get(url, params=params)
+        response.raise_for_status()  # Raise an error for bad status codes
+        data = response.json()
 
-    # Extract price, volume, and market cap data
-    prices = data['prices']
-    volumes = data['total_volumes']
-    market_caps = data['market_caps']
+        # Extract price, volume, and market cap data
+        prices = data['prices']
+        volumes = data['total_volumes']
+        market_caps = data['market_caps']
 
-    # Convert to a pandas DataFrame
-    df = pd.DataFrame(prices, columns=['timestamp', 'price'])
-    df['volume'] = [v[1] for v in volumes]
-    df['market_cap'] = [m[1] for m in market_caps]
+        # Convert to a pandas DataFrame
+        df = pd.DataFrame(prices, columns=['timestamp', 'price'])
+        df['volume'] = [v[1] for v in volumes]
+        df['market_cap'] = [m[1] for m in market_caps]
 
-    # Convert timestamp to readable date
-    df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
+        # Convert timestamp to readable date
+        df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
 
-    # Drop the timestamp column
-    df = df.drop(columns=['timestamp'])
+        # Drop the timestamp column
+        df = df.drop(columns=['timestamp'])
 
-    # Calculate risk metrics
-    df['daily_return'] = df['price'].pct_change()
-    volatility = df['daily_return'].std()
-    df['cumulative_return'] = (1 + df['daily_return']).cumprod()
-    df['drawdown'] = df['cumulative_return'] / df['cumulative_return'].cummax() - 1
-    max_drawdown = df['drawdown'].min()
+        # Calculate risk metrics
+        df['daily_return'] = df['price'].pct_change()
+        volatility = df['daily_return'].std()
+        df['cumulative_return'] = (1 + df['daily_return']).cumprod()
+        df['drawdown'] = df['cumulative_return'] / df['cumulative_return'].cummax() - 1
+        max_drawdown = df['drawdown'].min()
 
-    # Store the latest data
-    latest_data = {
-        'volatility': volatility,
-        'max_drawdown': max_drawdown,
-        'latest_price': df['price'].iloc[-1],
-        'latest_volume': df['volume'].iloc[-1],
-        'latest_market_cap': df['market_cap'].iloc[-1]
-    }
+        # Calculate 24-hour and 7-day price changes
+        price_change_24h = ((df['price'].iloc[-1] - df['price'].iloc[-2]) / df['price'].iloc[-2]) * 100
+        price_change_7d = ((df['price'].iloc[-1] - df['price'].iloc[-8]) / df['price'].iloc[-8]) * 100
+
+        # Store the latest data
+        latest_data = {
+            'latest_date': df['date'].iloc[-1].strftime('%Y-%m-%d %H:%M:%S'),  # Timestamp
+            'latest_market_cap': round(df['market_cap'].iloc[-1], 2),          # Market cap (rounded)
+            'latest_price': round(df['price'].iloc[-1], 6),                    # Price (rounded)
+            'latest_volume': round(df['volume'].iloc[-1], 2),                  # Volume (rounded)
+            'max_drawdown': round(max_drawdown, 4),                           # Max drawdown (rounded)
+            'volatility': round(volatility, 4),                               # Volatility (rounded)
+            'price_change_24h': round(price_change_24h, 2),                   # 24h price change (rounded)
+            'price_change_7d': round(price_change_7d, 2)                      # 7d price change (rounded)
+        }
+    except Exception as e:
+        # Handle errors gracefully
+        latest_data = {
+            'error': str(e)
+        }
 
 # Schedule data fetching every hour
 scheduler = BackgroundScheduler()
