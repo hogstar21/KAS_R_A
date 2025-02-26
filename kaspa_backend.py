@@ -3,14 +3,16 @@ from flask import Flask, jsonify
 import requests
 import pandas as pd
 from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import datetime
 
 app = Flask(__name__)
 
 # Global variable to store the latest data
 latest_data = {}
+historical_data = pd.DataFrame()
 
 def fetch_kaspa_data():
-    global latest_data
+    global latest_data, historical_data
     try:
         # CoinGecko API endpoint for Kaspa (KAS)
         url = "https://api.coingecko.com/api/v3/coins/kaspa/market_chart"
@@ -65,6 +67,9 @@ def fetch_kaspa_data():
             'price_change_24h': round(price_change_24h, 2),                   # 24h price change (rounded)
             'price_change_7d': round(price_change_7d, 2)                      # 7d price change (rounded)
         }
+
+        # Update historical data
+        historical_data = df
     except Exception as e:
         # Handle errors gracefully
         latest_data = {
@@ -81,10 +86,24 @@ scheduler.start()
 def home():
     return "Welcome to the Kaspa Risk Metrics API! Use the /data endpoint to get metrics."
 
-# Data route
-@app.route('/data')
-def get_data():
+# Live data route
+@app.route('/data/live')
+def get_live_data():
     return jsonify(latest_data)
+
+# Historical data route
+@app.route('/data/historical')
+def get_historical_data():
+    if historical_data.empty:
+        return jsonify({'error': 'No historical data available'}), 404
+
+    # Prepare historical data for the chart
+    historical_chart_data = {
+        'dates': historical_data['date'].dt.strftime('%Y-%m-%d').tolist(),  # Dates as strings
+        'prices': historical_data['price'].tolist(),                        # Price data
+        'risks': historical_data['volatility'].tolist()                     # Risk data (volatility)
+    }
+    return jsonify(historical_chart_data)
 
 if __name__ == '__main__':
     # Fetch data immediately on startup
