@@ -3,7 +3,6 @@ from flask import Flask, jsonify
 import requests
 import pandas as pd
 from apscheduler.schedulers.background import BackgroundScheduler
-from datetime import datetime
 
 app = Flask(__name__)
 
@@ -97,11 +96,14 @@ def get_historical_data():
     if historical_data.empty:
         return jsonify({'error': 'No historical data available'}), 404
 
+    # Remove rows with NaN values in the 'volatility' column
+    cleaned_data = historical_data.dropna(subset=['volatility'])
+
     # Prepare historical data for the chart
     historical_chart_data = {
-        'dates': historical_data['date'].dt.strftime('%Y-%m-%d').tolist(),  # Dates as strings
-        'prices': historical_data['price'].tolist(),                        # Price data
-        'risks': historical_data['volatility'].tolist()                     # Risk data (volatility)
+        'dates': cleaned_data['date'].dt.strftime('%Y-%m-%d').tolist(),  # Dates as strings
+        'prices': cleaned_data['price'].tolist(),                        # Price data
+        'risks': cleaned_data['volatility'].tolist()                     # Risk data (volatility)
     }
     return jsonify(historical_chart_data)
 
