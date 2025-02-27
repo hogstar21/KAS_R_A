@@ -6,6 +6,8 @@
     <title>Kaspa Risk Metric Heatmap</title>
     <!-- Chart.js for data visualization -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Date adapter for Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -70,10 +72,13 @@
         let heatmapChart;
         let historicalData = null;
 
+        // Backend URL
+        const backendUrl = 'https://your-backend-url.onrender.com'; // Replace with your backend URL
+
         // Function to fetch historical data
         async function fetchHistoricalData() {
             try {
-                const response = await fetch('/data/historical?timeFrame=all');
+                const response = await fetch(`${backendUrl}/data/historical?timeFrame=all`);
                 const data = await response.json();
                 
                 if (data.error) {
@@ -177,30 +182,6 @@
                                     const price = context.raw;
                                     const risk = riskLevels[context.dataIndex];
                                     return `Price: $${price.toFixed(6)} | Risk: ${(risk * 100).toFixed(2)}%`;
-                                }
-                            }
-                        },
-                        annotation: {
-                            annotations: {
-                                riskKey: {
-                                    type: 'box',
-                                    xMin: dates[dates.length - 1],
-                                    xMax: dates[dates.length - 1],
-                                    yMin: minPrice,
-                                    yMax: maxPrice,
-                                    backgroundColor: 'rgba(0, 0, 0, 0.1)',
-                                    borderColor: 'rgba(0, 0, 0, 0.5)',
-                                    borderWidth: 1,
-                                    label: {
-                                        content: 'Risk Key',
-                                        display: true,
-                                        position: 'right',
-                                        backgroundColor: 'rgba(255, 255, 255, 0.8)',
-                                        color: '#000',
-                                        font: {
-                                            size: 12,
-                                        }
-                                    }
                                 }
                             }
                         }
