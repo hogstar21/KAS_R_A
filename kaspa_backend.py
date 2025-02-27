@@ -170,11 +170,11 @@ def get_historical_data():
         df = df[df['date'] >= start_date]
     
     # Prepare data for the frontend
-    cleaned_data = df.dropna(subset=['risk'])
+    cleaned_data = df.dropna(subset=['weighted_risk'])
     historical_chart_data = {
         'dates': cleaned_data['date'].dt.strftime('%Y-%m-%d').tolist(),
         'prices': cleaned_data['price'].tolist(),
-        'risks': cleaned_data['risk'].tolist(),
+        'weighted_risks': cleaned_data['weighted_risk'].tolist(),  # Add this line
         'volatility': cleaned_data['volatility'].tolist(),
         'rsi': cleaned_data['rsi'].tolist(),
         'ma_50': cleaned_data['ma_50'].tolist(),
@@ -182,7 +182,6 @@ def get_historical_data():
         'risk_reward': cleaned_data['risk_reward'].tolist(),
     }
     return jsonify(historical_chart_data)
-
 if __name__ == '__main__':
     # Fetch data immediately on startup
     fetch_kaspa_data()
