@@ -3,8 +3,10 @@ from flask import Flask, jsonify
 import requests
 import pandas as pd
 from apscheduler.schedulers.background import BackgroundScheduler
+from flask_cors import CORS  # Import CORS
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 # Global variable to store the latest data
 latest_data = {}
