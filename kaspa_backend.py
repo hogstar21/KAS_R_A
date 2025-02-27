@@ -6,9 +6,13 @@ import numpy as np
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask_cors import CORS
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Get your Fear and Greed API key from environment variables
+FEAR_GREED_API_KEY = os.environ.get('FEAR_GREED_API_KEY', '')
 
 app = Flask(__name__)
 
@@ -18,6 +22,41 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 # Global variable to store the latest data
 latest_data = {}
 historical_data = pd.DataFrame()
+
+def fetch_fear_greed_data(days=365):
+    """
+    Fetch historical Fear and Greed Index data using your API
+    Returns a DataFrame with dates and corresponding fear and greed values
+    """
+    try:
+        # Replace with your actual Fear and Greed API endpoint and parameters
+        fear_greed_url = f"https://fear-and-greed-index.p.rapidapi.com"
+        params = {
+            'api_key': FEAR_GREED_API_KEY,
+            'days': days
+        }
+        
+        response = requests.get(fear_greed_url, params=params)
+        response.raise_for_status()
+        fear_greed_data = response.json()
+        
+        # Create DataFrame from response - adjust this based on your API's response format
+        # Example format: [{"date": "2023-01-01", "value": 25}, {"date": "2023-01-02", "value": 30}, ...]
+        fg_df = pd.DataFrame(fear_greed_data)
+        fg_df['date'] = pd.to_datetime(fg_df['date'])
+        
+        # Rename columns to match our naming convention
+        fg_df = fg_df.rename(columns={'value': 'fear_greed_index'})
+        
+        # Calculate fear_greed_risk (0-1 scale where 0 = greedy = higher risk, 100 = fearful = lower risk)
+        fg_df['fear_greed_risk'] = (100 - fg_df['fear_greed_index']) / 100
+        
+        return fg_df
+    
+    except Exception as e:
+        print(f"Error fetching Fear and Greed data: {str(e)}")
+        # Return empty DataFrame with required columns
+        return pd.DataFrame(columns=['date', 'fear_greed_index', 'fear_greed_risk'])
 
 def fetch_kaspa_data():
     global latest_data, historical_data
@@ -102,22 +141,45 @@ def fetch_kaspa_data():
         # MA Crossover signal (1 = bearish, 0 = bullish)
         df['ma_cross_risk'] = ((df['ma_50'] < df['ma_200']).astype(int) * 0.8) + 0.1
         
-        # 3. MARKET SENTIMENT
-        # Fetch Fear & Greed Index
-        try:
-            sentiment_url = "https://api.alternative.me/fng/"
-            sentiment_response = requests.get(sentiment_url)
-            sentiment_data = sentiment_response.json()
-            fear_greed_index = int(sentiment_data['data'][0]['value'])
-            # Convert to risk (0-1 scale where 0 = greedy = higher risk, 100 = fearful = lower risk)
-            fear_greed_risk = (100 - fear_greed_index) / 100
-        except:
-            fear_greed_index = 50
-            fear_greed_risk = 0.5
+        # 3. MARKET SENTIMENT - Now using historical Fear & Greed data
+        # Fetch historical Fear & Greed data
+        fg_data = fetch_fear_greed_data()
+        
+        if not fg_data.empty:
+            # Merge with our price data based on date
+            # First, ensure the date field in both DataFrames is in the same format
+            df['date_only'] = df['date'].dt.date
+            fg_data['date_only'] = fg_data['date'].dt.date
             
-        # Apply fear and greed index to all rows (for simplicity)
-        df['fear_greed_index'] = fear_greed_index  
-        df['fear_greed_risk'] = fear_greed_risk
+            # Convert to dictionary for faster lookups
+            fg_dict = fg_data.set_index('date_only')[['fear_greed_index', 'fear_greed_risk']].to_dict('index')
+            
+            # Map fear and greed values to each date in our price data
+            df['fear_greed_index'] = df['date_only'].map(lambda x: fg_dict.get(x, {}).get('fear_greed_index', 50) 
+                                                     if x in fg_dict else 50)
+            df['fear_greed_risk'] = df['date_only'].map(lambda x: fg_dict.get(x, {}).get('fear_greed_risk', 0.5) 
+                                                    if x in fg_dict else 0.5)
+            
+            # Clean up temporary column
+            df = df.drop(columns=['date_only'])
+        else:
+            # If we couldn't get historical fear and greed data, use alternative/fallback
+            # Fetch current Fear & Greed Index as fallback
+            try:
+                sentiment_url = "https://api.alternative.me/fng/"
+                sentiment_response = requests.get(sentiment_url)
+                sentiment_data = sentiment_response.json()
+                fear_greed_index = int(sentiment_data['data'][0]['value'])
+                # Convert to risk (0-1 scale where 0 = greedy = higher risk, 100 = fearful = lower risk)
+                fear_greed_risk = (100 - fear_greed_index) / 100
+            except:
+                fear_greed_index = 50
+                fear_greed_risk = 0.5
+                
+            # If no historical data available, use the current value for all dates (suboptimal)
+            print("Warning: Using current Fear & Greed index for all historical data points")
+            df['fear_greed_index'] = fear_greed_index  
+            df['fear_greed_risk'] = fear_greed_risk
         
         # 4. NETWORK ACTIVITY 
         # Calculate volume-based network activity metrics
@@ -178,6 +240,9 @@ def fetch_kaspa_data():
         # Ensure risk is between 0-1
         df['weighted_risk'] = df['weighted_risk'].clip(0, 1)
         
+        # Get latest fear and greed index (from our historical data or fallback)
+        latest_fg_index = df['fear_greed_index'].iloc[-1]
+        
         # Store the latest data
         latest_data = {
             'latest_date': df['date'].iloc[-1].strftime('%Y-%m-%d %H:%M:%S'),
@@ -185,7 +250,7 @@ def fetch_kaspa_data():
             'latest_price': round(current_price, 6),
             'latest_volume': round(volume_24h, 2),
             'latest_risk': round(df['weighted_risk'].iloc[-1], 4),
-            'fear_greed_index': fear_greed_index,
+            'fear_greed_index': int(latest_fg_index),
             'volatility_30d': round(df['volatility_30d'].iloc[-1], 6),
             'rsi': round(df['rsi'].iloc[-1], 2),
             'nvt_ratio': round(df['nvt_ratio'].iloc[-1], 2),
@@ -197,6 +262,9 @@ def fetch_kaspa_data():
     except Exception as e:
         print(f"Error fetching data: {str(e)}")
         latest_data = {'error': str(e)}
+
+# Rest of your code remains the same
+# (server routes, CORS settings, etc.)
 
 # Ensure CORS headers are on all responses
 @app.after_request
