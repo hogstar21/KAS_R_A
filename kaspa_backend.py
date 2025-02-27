@@ -2,6 +2,7 @@ import os
 from flask import Flask, jsonify, request, send_file
 import requests
 import pandas as pd
+import numpy as np
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -12,7 +13,6 @@ load_dotenv()
 app = Flask(__name__)
 
 # Enable CORS with a wildcard to allow all origins temporarily
-# This ensures your API is accessible from any frontend during development
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Global variable to store the latest data
@@ -50,74 +50,145 @@ def fetch_kaspa_data():
 
         # Process historical data
         prices = historical_data_raw['prices']
-        timestamps = [x[0] for x in prices]
-        prices = [x[1] for x in prices]
-
+        volumes = historical_data_raw['total_volumes']
+        market_caps = historical_data_raw['market_caps']
+        
+        # Create DataFrame with all metrics
         df = pd.DataFrame({
-            'timestamp': timestamps,
-            'price': prices
+            'timestamp': [x[0] for x in prices],
+            'price': [x[1] for x in prices],
+            'volume': [x[1] for x in volumes],
+            'market_cap': [x[1] for x in market_caps]
         })
+        
         df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
         df = df.drop(columns=['timestamp'])
         df = df.sort_values('date')
 
-        # Calculate min and max prices
-        min_price = df['price'].min()
-        max_price = df['price'].max()
+        # Calculate price metrics
+        df['price_pct_change'] = df['price'].pct_change()
+        df['log_return'] = np.log(df['price'] / df['price'].shift(1))
 
-        # Calculate risk (price-based)
-        df['risk'] = (df['price'] - min_price) / (max_price - min_price)
-
-        # Calculate volatility (30-day rolling standard deviation)
-        df['volatility'] = df['price'].rolling(window=30).std().fillna(0)
-
-        # Calculate RSI
+        # 1. VOLATILITY METRICS
+        # Short-term volatility (14-day)
+        df['volatility_14d'] = df['log_return'].rolling(window=14).std() * np.sqrt(14)
+        # Medium-term volatility (30-day)
+        df['volatility_30d'] = df['log_return'].rolling(window=30).std() * np.sqrt(30)
+        # Long-term volatility (90-day)
+        df['volatility_90d'] = df['log_return'].rolling(window=90).std() * np.sqrt(90)
+        
+        # Normalize volatilities (0-1 scale)
+        for col in ['volatility_14d', 'volatility_30d', 'volatility_90d']:
+            max_val = df[col].max()
+            min_val = df[col].min()
+            df[f'{col}_norm'] = (df[col] - min_val) / (max_val - min_val) if max_val > min_val else 0
+        
+        # 2. TECHNICAL INDICATORS
+        # RSI (14-day)
         delta = df['price'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss.replace(0, 0.00001)
         df['rsi'] = 100 - (100 / (1 + rs))
         df['rsi'] = df['rsi'].fillna(50)
-
-        # Calculate moving averages
+        
+        # Normalize RSI (convert to 0-1 risk scale, higher RSI = lower risk)
+        df['rsi_risk'] = 1 - (df['rsi'] / 100)
+        
+        # Moving Averages
         df['ma_50'] = df['price'].rolling(window=50).mean().fillna(df['price'])
         df['ma_200'] = df['price'].rolling(window=200).mean().fillna(df['price'])
-
-        # Calculate risk/reward ratio
-        df['risk_reward'] = df['price'].pct_change(periods=30) / (df['volatility'] + 0.00001)
-        df['risk_reward'] = df['risk_reward'].fillna(0)
-
-        # Fetch market sentiment (Fear & Greed Index)
-        sentiment_url = "https://api.alternative.me/fng/"
-        sentiment_response = requests.get(sentiment_url)
-        sentiment_data = sentiment_response.json()
-        fear_greed_index = sentiment_data['data'][0]['value']
-
-        # Fetch network activity (example: transaction count)
-        # Replace with actual API call to fetch transaction count or hash rate
-        df['transaction_count'] = 1000  # Placeholder for now
-
-        # Calculate NVT Ratio (Network Value to Transaction Ratio)
-        df['nvt_ratio'] = market_cap / (df['transaction_count'] + 0.00001)
-
-        # Combine all metrics into a weighted risk score
+        
+        # MA Crossover signal (1 = bearish, 0 = bullish)
+        df['ma_cross_risk'] = ((df['ma_50'] < df['ma_200']).astype(int) * 0.8) + 0.1
+        
+        # 3. MARKET SENTIMENT
+        # Fetch Fear & Greed Index
+        try:
+            sentiment_url = "https://api.alternative.me/fng/"
+            sentiment_response = requests.get(sentiment_url)
+            sentiment_data = sentiment_response.json()
+            fear_greed_index = int(sentiment_data['data'][0]['value'])
+            # Convert to risk (0-1 scale where 0 = greedy = higher risk, 100 = fearful = lower risk)
+            fear_greed_risk = (100 - fear_greed_index) / 100
+        except:
+            fear_greed_index = 50
+            fear_greed_risk = 0.5
+            
+        # Apply fear and greed index to all rows (for simplicity)
+        df['fear_greed_index'] = fear_greed_index  
+        df['fear_greed_risk'] = fear_greed_risk
+        
+        # 4. NETWORK ACTIVITY 
+        # Calculate volume-based network activity metrics
+        df['volume_ma_30'] = df['volume'].rolling(window=30).mean()
+        df['volume_ratio'] = df['volume'] / df['volume_ma_30']
+        df['volume_risk'] = 1 - (df['volume_ratio'] / df['volume_ratio'].max())
+        df['volume_risk'] = df['volume_risk'].fillna(0.5)
+        
+        # Calculate Network Value to Transactions (NVT) Ratio
+        df['nvt_ratio'] = df['market_cap'] / df['volume'].replace(0, 1)
+        
+        # Normalize NVT (higher NVT = higher risk)
+        nvt_max = df['nvt_ratio'].max()
+        nvt_min = df['nvt_ratio'].min()
+        df['nvt_risk'] = (df['nvt_ratio'] - nvt_min) / (nvt_max - nvt_min) if nvt_max > nvt_min else 0.5
+        df['nvt_risk'] = df['nvt_risk'].fillna(0.5)
+        
+        # 5. RISK/REWARD RATIO
+        # MVRV ratio proxy (using price to MA ratio as substitute)
+        df['price_to_ma200_ratio'] = df['price'] / df['ma_200']
+        
+        # Convert to risk (higher ratio = higher risk)
+        max_ratio = df['price_to_ma200_ratio'].max()
+        min_ratio = df['price_to_ma200_ratio'].min()
+        df['mvrv_risk'] = (df['price_to_ma200_ratio'] - min_ratio) / (max_ratio - min_ratio) if max_ratio > min_ratio else 0.5
+        df['mvrv_risk'] = df['mvrv_risk'].fillna(0.5)
+        
+        # Combine all metrics into weighted risk score with adjustable weights
+        weights = {
+            'volatility': 0.25,  # Higher weight for volatility
+            'technical': 0.20,   # Technical indicators
+            'sentiment': 0.15,   # Market sentiment
+            'network': 0.20,     # Network activity
+            'valuation': 0.20    # Risk/reward and valuation
+        }
+        
         df['weighted_risk'] = (
-            df['risk'] * 0.4 +  # Price-based risk
-            df['volatility'] * 0.2 +  # Volatility
-            (df['rsi'] / 100) * 0.1 +  # RSI
-            (1 - df['risk_reward']) * 0.1 +  # Risk/Reward
-            (df['nvt_ratio'] / df['nvt_ratio'].max()) * 0.2  # NVT Ratio
+            # Volatility component (25%)
+            ((df['volatility_14d_norm'] * 0.4) + 
+             (df['volatility_30d_norm'] * 0.4) + 
+             (df['volatility_90d_norm'] * 0.2)) * weights['volatility'] +
+            
+            # Technical indicators component (20%)
+            ((df['rsi_risk'] * 0.5) + 
+             (df['ma_cross_risk'] * 0.5)) * weights['technical'] +
+            
+            # Market sentiment component (15%)
+            df['fear_greed_risk'] * weights['sentiment'] +
+            
+            # Network activity component (20%)
+            ((df['volume_risk'] * 0.5) + 
+             (df['nvt_risk'] * 0.5)) * weights['network'] +
+            
+            # Valuation/Risk-Reward component (20%)
+            df['mvrv_risk'] * weights['valuation']
         )
-
+        
+        # Ensure risk is between 0-1
+        df['weighted_risk'] = df['weighted_risk'].clip(0, 1)
+        
         # Store the latest data
         latest_data = {
             'latest_date': df['date'].iloc[-1].strftime('%Y-%m-%d %H:%M:%S'),
             'latest_market_cap': round(market_cap, 2),
             'latest_price': round(current_price, 6),
             'latest_volume': round(volume_24h, 2),
-            'min_price': round(min_price, 6),
-            'max_price': round(max_price, 6),
+            'latest_risk': round(df['weighted_risk'].iloc[-1], 4),
             'fear_greed_index': fear_greed_index,
+            'volatility_30d': round(df['volatility_30d'].iloc[-1], 6),
+            'rsi': round(df['rsi'].iloc[-1], 2),
+            'nvt_ratio': round(df['nvt_ratio'].iloc[-1], 2),
         }
 
         # Update historical data
@@ -174,14 +245,17 @@ def get_historical_data():
     historical_chart_data = {
         'dates': cleaned_data['date'].dt.strftime('%Y-%m-%d').tolist(),
         'prices': cleaned_data['price'].tolist(),
-        'weighted_risks': cleaned_data['weighted_risk'].tolist(),  # Add this line
-        'volatility': cleaned_data['volatility'].tolist(),
+        'weighted_risks': cleaned_data['weighted_risk'].tolist(),
+        'volatility': cleaned_data['volatility_30d'].tolist(),
         'rsi': cleaned_data['rsi'].tolist(),
         'ma_50': cleaned_data['ma_50'].tolist(),
         'ma_200': cleaned_data['ma_200'].tolist(),
-        'risk_reward': cleaned_data['risk_reward'].tolist(),
+        'nvt_ratio': cleaned_data['nvt_ratio'].tolist(),
+        'fear_greed_index': cleaned_data['fear_greed_index'].tolist(),
+        'volume': cleaned_data['volume'].tolist(),
     }
     return jsonify(historical_chart_data)
+
 if __name__ == '__main__':
     # Fetch data immediately on startup
     fetch_kaspa_data()
