@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kaspa Risk Metrics Dashboard</title>
+    <title>Kaspa Risk Metric Heatmap</title>
     <!-- Chart.js for data visualization -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -25,80 +25,10 @@
             color: #333;
             text-align: center;
         }
-        .metrics-container {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-        .metric-card {
-            background-color: #f9f9f9;
-            border-radius: 8px;
-            padding: 15px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            width: calc(33.33% - 20px);
-            margin-bottom: 15px;
-            box-sizing: border-box;
-        }
-        .metric-title {
-            font-size: 14px;
-            color: #666;
-            margin-bottom: 5px;
-        }
-        .metric-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #333;
-        }
         .chart-container {
             position: relative;
-            height: 400px;
+            height: 600px;
             margin-top: 20px;
-        }
-        .tabs {
-            display: flex;
-            margin-bottom: 20px;
-            border-bottom: 1px solid #ddd;
-        }
-        .tab {
-            padding: 10px 20px;
-            cursor: pointer;
-            background-color: #f1f1f1;
-            border: none;
-            border-radius: 5px 5px 0 0;
-            margin-right: 5px;
-        }
-        .tab.active {
-            background-color: #4CAF50;
-            color: white;
-        }
-        .time-filters {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 20px;
-        }
-        .time-filter {
-            padding: 8px 15px;
-            margin: 0 5px;
-            cursor: pointer;
-            background-color: #f1f1f1;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .time-filter.active {
-            background-color: #4CAF50;
-            color: white;
-            border-color: #4CAF50;
-        }
-        @media (max-width: 768px) {
-            .metric-card {
-                width: calc(50% - 15px);
-            }
-        }
-        @media (max-width: 480px) {
-            .metric-card {
-                width: 100%;
-            }
         }
         #updateTime {
             text-align: center;
@@ -125,98 +55,25 @@
 </head>
 <body>
     <div class="container">
-        <h1>Kaspa Risk Metrics Dashboard</h1>
+        <h1>Kaspa Risk Metric Heatmap</h1>
         <p id="updateTime">Last updated: Loading...</p>
         
         <div class="error-message" id="errorMessage"></div>
         
-        <div class="metrics-container" id="metricsContainer">
-            <div class="loading">Loading metrics...</div>
-        </div>
-        
-        <div class="time-filters">
-            <button class="time-filter active" data-time="1w">1 Week</button>
-            <button class="time-filter" data-time="1m">1 Month</button>
-            <button class="time-filter" data-time="3m">3 Months</button>
-            <button class="time-filter" data-time="1y">1 Year</button>
-            <button class="time-filter" data-time="all">All Time</button>
-        </div>
-        
-        <div class="tabs">
-            <button class="tab active" data-metric="price">Price</button>
-            <button class="tab" data-metric="risk">Risk</button>
-            <button class="tab" data-metric="volatility">Volatility</button>
-            <button class="tab" data-metric="rsi">RSI</button>
-            <button class="tab" data-metric="moving-averages">Moving Averages</button>
-            <button class="tab" data-metric="risk-reward">Risk/Reward</button>
-        </div>
-        
         <div class="chart-container">
-            <canvas id="metricsChart"></canvas>
+            <canvas id="riskHeatmapChart"></canvas>
         </div>
     </div>
 
     <script>
         // Global variables
-        let chart;
-        let currentMetric = 'price';
-        let currentTimeFrame = '1w';
+        let heatmapChart;
         let historicalData = null;
-        
-        // Format numbers with commas for thousands
-        function formatNumber(num) {
-            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-        }
-        
-        // Function to fetch and display latest metrics
-        async function fetchLatestMetrics() {
-            try {
-                const response = await fetch('/data/latest');
-                const data = await response.json();
-                
-                if (data.error) {
-                    document.getElementById('errorMessage').textContent = `Error: ${data.error}`;
-                    document.getElementById('errorMessage').style.display = 'block';
-                    return;
-                }
-                
-                document.getElementById('errorMessage').style.display = 'none';
-                document.getElementById('updateTime').textContent = `Last updated: ${data.latest_date}`;
-                
-                // Clear loading message
-                const metricsContainer = document.getElementById('metricsContainer');
-                metricsContainer.innerHTML = '';
-                
-                // Create metric cards
-                const metrics = [
-                    { title: 'Current Price', value: `$${data.latest_price}` },
-                    { title: 'Market Cap', value: `$${formatNumber(data.latest_market_cap)}` },
-                    { title: '24h Volume', value: `$${formatNumber(data.latest_volume)}` },
-                    { title: 'All-Time High', value: `$${data.max_price}` },
-                    { title: 'All-Time Low', value: `$${data.min_price}` },
-                    { title: 'Price Range', value: `${((data.latest_price - data.min_price) / (data.max_price - data.min_price) * 100).toFixed(2)}%` }
-                ];
-                
-                metrics.forEach(metric => {
-                    const card = document.createElement('div');
-                    card.className = 'metric-card';
-                    card.innerHTML = `
-                        <div class="metric-title">${metric.title}</div>
-                        <div class="metric-value">${metric.value}</div>
-                    `;
-                    metricsContainer.appendChild(card);
-                });
-            } catch (error) {
-                console.error('Error fetching latest metrics:', error);
-                document.getElementById('errorMessage').textContent = `Error: ${error.message}`;
-                document.getElementById('errorMessage').style.display = 'block';
-            }
-        }
-        
+
         // Function to fetch historical data
         async function fetchHistoricalData() {
             try {
-                const response = await fetch(`/data/historical?timeFrame=${currentTimeFrame}`);
+                const response = await fetch('/data/historical?timeFrame=all');
                 const data = await response.json();
                 
                 if (data.error) {
@@ -234,190 +91,151 @@
                 return null;
             }
         }
-        
-        // Function to update the chart
-        function updateChart() {
+
+        // Function to calculate risk level
+        function calculateRiskLevel(price, minPrice, maxPrice) {
+            // Normalize price between 0 and 1
+            const normalizedPrice = (price - minPrice) / (maxPrice - minPrice);
+            // Map normalized price to risk level (0 = low risk, 1 = high risk)
+            return normalizedPrice;
+        }
+
+        // Function to update the heatmap
+        function updateHeatmap() {
             if (!historicalData) return;
-            
-            const ctx = document.getElementById('metricsChart').getContext('2d');
-            
-            // Configuration based on selected metric
-            const chartConfig = {
-                price: {
-                    label: 'Price (USD)',
-                    data: historicalData.prices,
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1
-                },
-                risk: {
-                    label: 'Risk',
-                    data: historicalData.risks,
-                    borderColor: 'rgb(255, 99, 132)',
-                    tension: 0.1
-                },
-                volatility: {
-                    label: 'Volatility',
-                    data: historicalData.volatility,
-                    borderColor: 'rgb(255, 159, 64)',
-                    tension: 0.1
-                },
-                rsi: {
-                    label: 'RSI',
-                    data: historicalData.rsi,
-                    borderColor: 'rgb(153, 102, 255)',
-                    tension: 0.1
-                },
-                'moving-averages': {
-                    label: 'Price & Moving Averages',
-                    data: historicalData.prices,
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1,
-                    additional: [
-                        {
-                            label: '50-Day MA',
-                            data: historicalData.ma_50,
-                            borderColor: 'rgb(255, 99, 132)',
-                            borderWidth: 1.5,
-                            pointRadius: 0
-                        },
-                        {
-                            label: '200-Day MA',
-                            data: historicalData.ma_200,
-                            borderColor: 'rgb(54, 162, 235)',
-                            borderWidth: 1.5,
-                            pointRadius: 0
-                        }
-                    ]
-                },
-                'risk-reward': {
-                    label: 'Risk/Reward Ratio',
-                    data: historicalData.risk_reward,
-                    borderColor: 'rgb(54, 162, 235)',
-                    tension: 0.1
-                }
-            };
-            
-            const selectedConfig = chartConfig[currentMetric];
-            
+
+            const ctx = document.getElementById('riskHeatmapChart').getContext('2d');
+
+            // Extract data
+            const dates = historicalData.dates;
+            const prices = historicalData.prices;
+            const minPrice = Math.min(...prices);
+            const maxPrice = Math.max(...prices);
+
+            // Calculate risk levels
+            const riskLevels = prices.map(price => calculateRiskLevel(price, minPrice, maxPrice));
+
             // Destroy previous chart if it exists
-            if (chart) {
-                chart.destroy();
+            if (heatmapChart) {
+                heatmapChart.destroy();
             }
-            
-            // Create datasets based on metric selection
-            let datasets = [
-                {
-                    label: selectedConfig.label,
-                    data: selectedConfig.data,
-                    borderColor: selectedConfig.borderColor,
-                    backgroundColor: selectedConfig.borderColor.replace('rgb', 'rgba').replace(')', ', 0.1)'),
-                    borderWidth: 2,
-                    pointRadius: 1,
-                    tension: selectedConfig.tension,
-                    fill: true
-                }
-            ];
-            
-            // Add additional datasets if any
-            if (selectedConfig.additional) {
-                datasets = datasets.concat(selectedConfig.additional);
-            }
-            
-            // Create the chart
-            chart = new Chart(ctx, {
+
+            // Create the heatmap
+            heatmapChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: historicalData.dates,
-                    datasets: datasets
+                    labels: dates,
+                    datasets: [{
+                        label: 'Price',
+                        data: prices,
+                        borderColor: 'rgba(75, 192, 192, 0.2)',
+                        backgroundColor: riskLevels.map(risk => {
+                            // Map risk level to color
+                            const red = Math.floor(255 * risk);
+                            const blue = Math.floor(255 * (1 - risk));
+                            return `rgba(${red}, 0, ${blue}, 0.6)`;
+                        }),
+                        borderWidth: 1,
+                        fill: true,
+                    }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {
                         x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                displayFormats: {
+                                    day: 'MMM d',
+                                }
+                            },
                             grid: {
-                                display: false
+                                display: false,
+                            },
+                            title: {
+                                display: true,
+                                text: 'Date',
                             }
                         },
                         y: {
-                            grid: {
-                                color: 'rgba(0, 0, 0, 0.05)'
-                            },
-                            beginAtZero: currentMetric === 'risk' || currentMetric === 'risk-reward'
+                            beginAtZero: false,
+                            title: {
+                                display: true,
+                                text: 'Price (USD)',
+                            }
                         }
                     },
                     plugins: {
                         legend: {
-                            display: currentMetric === 'moving-averages',
-                            position: 'top'
+                            display: false,
                         },
                         tooltip: {
-                            mode: 'index',
-                            intersect: false
+                            callbacks: {
+                                label: (context) => {
+                                    const price = context.raw;
+                                    const risk = riskLevels[context.dataIndex];
+                                    return `Price: $${price.toFixed(6)} | Risk: ${(risk * 100).toFixed(2)}%`;
+                                }
+                            }
+                        },
+                        annotation: {
+                            annotations: {
+                                riskKey: {
+                                    type: 'box',
+                                    xMin: dates[dates.length - 1],
+                                    xMax: dates[dates.length - 1],
+                                    yMin: minPrice,
+                                    yMax: maxPrice,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                                    borderColor: 'rgba(0, 0, 0, 0.5)',
+                                    borderWidth: 1,
+                                    label: {
+                                        content: 'Risk Key',
+                                        display: true,
+                                        position: 'right',
+                                        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                                        color: '#000',
+                                        font: {
+                                            size: 12,
+                                        }
+                                    }
+                                }
+                            }
                         }
-                    },
-                    interaction: {
-                        mode: 'nearest',
-                        axis: 'x',
-                        intersect: false
                     }
                 }
             });
+
+            // Add risk key to the chart
+            const riskKey = document.createElement('div');
+            riskKey.innerHTML = `
+                <div style="position: absolute; right: 20px; top: 20px; background: rgba(255, 255, 255, 0.8); padding: 10px; border-radius: 4px;">
+                    <strong>Risk Key:</strong>
+                    <div style="display: flex; align-items: center; margin-top: 5px;">
+                        <div style="width: 20px; height: 20px; background: darkblue; margin-right: 5px;"></div>
+                        <span>Low Risk (Buy)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; margin-top: 5px;">
+                        <div style="width: 20px; height: 20px; background: darkred; margin-right: 5px;"></div>
+                        <span>High Risk (Sell)</span>
+                    </div>
+                </div>
+            `;
+            document.querySelector('.chart-container').appendChild(riskKey);
         }
-        
+
         // Initialize the application
         async function initialize() {
-            await fetchLatestMetrics();
-            
             historicalData = await fetchHistoricalData();
             if (historicalData) {
-                updateChart();
+                updateHeatmap();
             }
-            
-            // Set up event listeners
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.addEventListener('click', function() {
-                    // Update active tab
-                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Update current metric
-                    currentMetric = this.getAttribute('data-metric');
-                    
-                    // Update chart
-                    updateChart();
-                });
-            });
-            
-            document.querySelectorAll('.time-filter').forEach(filter => {
-                filter.addEventListener('click', async function() {
-                    // Update active filter
-                    document.querySelectorAll('.time-filter').forEach(f => f.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Update current time frame
-                    currentTimeFrame = this.getAttribute('data-time');
-                    
-                    // Fetch new data and update chart
-                    historicalData = await fetchHistoricalData();
-                    if (historicalData) {
-                        updateChart();
-                    }
-                });
-            });
         }
-        
+
         // Start the application
         initialize();
-        
-        // Refresh data every 5 minutes
-        setInterval(async () => {
-            await fetchLatestMetrics();
-            historicalData = await fetchHistoricalData();
-            if (historicalData) {
-                updateChart();
-            }
-        }, 5 * 60 * 1000);
     </script>
 </body>
 </html>
