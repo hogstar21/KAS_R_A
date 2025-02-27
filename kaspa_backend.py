@@ -36,12 +36,12 @@ def fetch_fear_greed_data(days=365):
         params = {
             'limit': days,  # Number of days to fetch
             'format': 'json',  # Response format
-            'date_format': 'us'  # Date format (optional)
+            # REMOVED 'date_format': 'us' to get Unix timestamps
         }
         
         # Make the API request
         response = requests.get(fear_greed_url, params=params)
-        response.raise_for_status()  # Raise an error for bad responses (4xx, 5xx)
+        response.raise_for_status()
         
         # Parse the JSON response
         fear_greed_data = response.json()
@@ -52,8 +52,9 @@ def fetch_fear_greed_data(days=365):
         # Create a DataFrame from the data points
         fg_df = pd.DataFrame(data_points)
         
-        # Convert timestamp to datetime and value to integer
+        # Convert timestamp (in seconds) to datetime
         fg_df['timestamp'] = pd.to_datetime(fg_df['timestamp'], unit='s')
+        # Rest of the code remains unchanged...
         fg_df['value'] = fg_df['value'].astype(int)
         
         # Rename columns to match our naming convention
