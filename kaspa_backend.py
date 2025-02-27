@@ -25,39 +25,55 @@ historical_data = pd.DataFrame()
 
 def fetch_fear_greed_data(days=365):
     """
-    Fetch historical Fear and Greed Index data using your API
-    Returns a DataFrame with dates and corresponding fear and greed values
+    Fetch historical Fear and Greed Index data from alternative.me API.
+    Returns a DataFrame with dates and corresponding fear and greed values.
     """
     try:
-        # Replace with your actual Fear and Greed API endpoint and parameters
-        fear_greed_url = f"https://rapidapi.com/"
+        # URL for the alternative.me Fear and Greed Index API
+        fear_greed_url = "https://api.alternative.me/fng/"
+        
+        # Parameters for the API request
         params = {
-            'api_key': FEAR_GREED_API_KEY,
-            'days': days
+            'limit': days,  # Number of days to fetch
+            'format': 'json',  # Response format
+            'date_format': 'us'  # Date format (optional)
         }
         
+        # Make the API request
         response = requests.get(fear_greed_url, params=params)
-        response.raise_for_status()
+        response.raise_for_status()  # Raise an error for bad responses (4xx, 5xx)
+        
+        # Parse the JSON response
         fear_greed_data = response.json()
         
-        # Create DataFrame from response - adjust this based on your API's response format
-        # Example format: [{"date": "2023-01-01", "value": 25}, {"date": "2023-01-02", "value": 30}, ...]
-        fg_df = pd.DataFrame(fear_greed_data)
-        fg_df['date'] = pd.to_datetime(fg_df['date'])
+        # Extract the data points
+        data_points = fear_greed_data.get('data', [])
+        
+        # Create a DataFrame from the data points
+        fg_df = pd.DataFrame(data_points)
+        
+        # Convert timestamp to datetime and value to integer
+        fg_df['timestamp'] = pd.to_datetime(fg_df['timestamp'], unit='s')
+        fg_df['value'] = fg_df['value'].astype(int)
         
         # Rename columns to match our naming convention
-        fg_df = fg_df.rename(columns={'value': 'fear_greed_index'})
+        fg_df = fg_df.rename(columns={
+            'timestamp': 'date',
+            'value': 'fear_greed_index'
+        })
         
         # Calculate fear_greed_risk (0-1 scale where 0 = greedy = higher risk, 100 = fearful = lower risk)
         fg_df['fear_greed_risk'] = (100 - fg_df['fear_greed_index']) / 100
         
+        # Sort by date (ascending)
+        fg_df = fg_df.sort_values('date')
+        
         return fg_df
     
     except Exception as e:
-        print(f"Error fetching Fear and Greed data: {str(e)}")
+        print(f"Error fetching Fear and Greed data from alternative.me: {str(e)}")
         # Return empty DataFrame with required columns
         return pd.DataFrame(columns=['date', 'fear_greed_index', 'fear_greed_risk'])
-
 def fetch_kaspa_data():
     global latest_data, historical_data
     try:
