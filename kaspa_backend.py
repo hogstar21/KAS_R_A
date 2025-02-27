@@ -50,10 +50,18 @@ def fetch_kaspa_data():
         # Calculate risk metrics
         min_price = df['price'].min()
         max_price = df['price'].max()
-        df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Price-based risk
+
+        # Handle division by zero
+        if max_price == min_price:
+            df['risk'] = 0  # Set risk to 0 if max_price == min_price
+        else:
+            df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Price-based risk
 
         # Calculate volatility (30-day rolling standard deviation)
         df['volatility'] = df['price'].rolling(window=30).std()
+
+        # Handle NaN values in volatility
+        df['volatility'] = df['volatility'].fillna(0)  # Replace NaN with 0
 
         # Calculate RSI (Relative Strength Index)
         delta = df['price'].diff()
@@ -62,12 +70,22 @@ def fetch_kaspa_data():
         rs = gain / loss
         df['rsi'] = 100 - (100 / (1 + rs))
 
+        # Handle NaN values in RSI
+        df['rsi'] = df['rsi'].fillna(50)  # Replace NaN with 50 (neutral RSI)
+
         # Calculate moving averages (50-day and 200-day)
         df['ma_50'] = df['price'].rolling(window=50).mean()
         df['ma_200'] = df['price'].rolling(window=200).mean()
 
+        # Handle NaN values in moving averages
+        df['ma_50'] = df['ma_50'].fillna(df['price'])  # Replace NaN with current price
+        df['ma_200'] = df['ma_200'].fillna(df['price'])  # Replace NaN with current price
+
         # Calculate risk/reward ratio (simplified)
         df['risk_reward'] = df['price'].pct_change(periods=30) / df['volatility']
+
+        # Handle NaN values in risk/reward ratio
+        df['risk_reward'] = df['risk_reward'].fillna(0)  # Replace NaN with 0
 
         # Store the latest data
         latest_data = {
@@ -130,10 +148,18 @@ def get_historical_data():
         # Calculate risk metrics
         min_price = df['price'].min()
         max_price = df['price'].max()
-        df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Price-based risk
+
+        # Handle division by zero
+        if max_price == min_price:
+            df['risk'] = 0  # Set risk to 0 if max_price == min_price
+        else:
+            df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Price-based risk
 
         # Calculate volatility (30-day rolling standard deviation)
         df['volatility'] = df['price'].rolling(window=30).std()
+
+        # Handle NaN values in volatility
+        df['volatility'] = df['volatility'].fillna(0)  # Replace NaN with 0
 
         # Calculate RSI (Relative Strength Index)
         delta = df['price'].diff()
@@ -142,12 +168,22 @@ def get_historical_data():
         rs = gain / loss
         df['rsi'] = 100 - (100 / (1 + rs))
 
+        # Handle NaN values in RSI
+        df['rsi'] = df['rsi'].fillna(50)  # Replace NaN with 50 (neutral RSI)
+
         # Calculate moving averages (50-day and 200-day)
         df['ma_50'] = df['price'].rolling(window=50).mean()
         df['ma_200'] = df['price'].rolling(window=200).mean()
 
+        # Handle NaN values in moving averages
+        df['ma_50'] = df['ma_50'].fillna(df['price'])  # Replace NaN with current price
+        df['ma_200'] = df['ma_200'].fillna(df['price'])  # Replace NaN with current price
+
         # Calculate risk/reward ratio (simplified)
         df['risk_reward'] = df['price'].pct_change(periods=30) / df['volatility']
+
+        # Handle NaN values in risk/reward ratio
+        df['risk_reward'] = df['risk_reward'].fillna(0)  # Replace NaN with 0
 
         # Prepare data for the frontend
         cleaned_data = df.dropna(subset=['risk'])
@@ -163,6 +199,8 @@ def get_historical_data():
         }
         return jsonify(historical_chart_data)
     except Exception as e:
+        # Log the error for debugging
+        print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
