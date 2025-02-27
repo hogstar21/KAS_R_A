@@ -227,10 +227,10 @@ def fetch_kaspa_data():
         # Combine all metrics into weighted risk score with adjustable weights
         weights = {
             'volatility': 0.25,  # Higher weight for volatility
-            'technical': 0.20,   # Technical indicators
-            'sentiment': 0.15,   # Market sentiment
-            'network': 0.20,     # Network activity
-            'valuation': 0.20    # Risk/reward and valuation
+            'technical': 0.15,   # Technical indicators
+            'sentiment': 0.20,   # Market sentiment
+            'network': 0.15,     # Network activity
+            'valuation': 0.25    # Risk/reward and valuation
         }
         
         df['weighted_risk'] = (
