@@ -228,8 +228,8 @@ def fetch_kaspa_data():
         weights = {
             'volatility': 0.25,  # Higher weight for volatility
             'technical': 0.15,   # Technical indicators
-            'sentiment': 0.20,   # Market sentiment
-            'network': 0.15,     # Network activity
+            'sentiment': 0.30,   # Market sentiment
+            'network': 0.05,     # Network activity
             'valuation': 0.25    # Risk/reward and valuation
         }
         
