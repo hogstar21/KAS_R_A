@@ -10,7 +10,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+
+# Enable CORS with a wildcard to allow all origins temporarily
+# This ensures your API is accessible from any frontend during development
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Global variable to store the latest data
 latest_data = {}
@@ -136,6 +139,14 @@ def fetch_kaspa_data():
         latest_data = {
             'error': str(e)
         }
+
+# Ensure CORS headers are on all responses
+@app.after_request
+def add_cors_headers(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    return response
 
 # Serve the index.html file
 @app.route('/')
