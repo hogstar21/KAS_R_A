@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kaspa Risk Metric Heatmap</title>
-  <!-- Include Plotly.js -->
+  <!-- Use the latest Plotly.js version -->
   <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
   <style>
     body {
@@ -48,9 +48,7 @@
         z: [data.prices], // Price as the intensity (color scale)
         type: 'heatmap',
         colorscale: 'Viridis', // Color scale for the heatmap
-        colorbar: {
-          title: 'Price (USD)', // Label for the color scale
-        },
+        colorbar: { title: 'Price (USD)' }, // Label for the color scale
       };
 
       const layout = {
@@ -72,14 +70,10 @@
       }
     }
 
-    // Fetch data and render the chart when the page loads
-    fetchData().then(data => {
-      if (data) {
-        renderHeatmap(data);
-      }
-    });
+    // Initial load
+    updateChart();
 
-    // Update the chart every 5 minutes (300,000 milliseconds)
+    // Update every 5 minutes
     setInterval(updateChart, 5 * 60 * 1000);
   </script>
 </body>
