@@ -54,33 +54,94 @@
             margin-bottom: 20px;
             display: none;
         }
+        .metrics-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            margin: 20px 0;
+        }
+        .metric-box {
+            flex: 0 0 calc(20% - 10px);
+            background-color: #f9f9f9;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .metric-title {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+        }
         .risk-key {
             position: absolute;
-            right: -100px; /* Move further to the right */
-            top: 0;
-            height: 100%;
+            right: 20px;
+            top: 20px;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
+            background-color: rgba(255,255,255,0.8);
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         .gradient-bar {
-            width: 30px; /* Wider gradient bar */
-            height: 100%; /* Full height of the chart */
-            background: linear-gradient(to bottom, #8b0000, #ff0000, #ffff00, #00ff00, #0000ff);
+            width: 20px;
+            height: 200px;
+            background: linear-gradient(to top, #0000ff, #00ff00, #ffff00, #ff0000, #8b0000);
             border-radius: 4px;
+            margin-bottom: 5px;
         }
         .risk-labels {
-            position: absolute;
-            right: -130px; /* Position labels further to the right */
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            height: 100%;
+            height: 200px;
+            margin-left: 5px;
         }
-        .risk-labels span {
-            font-size: 14px;
+        .risk-label {
+            font-size: 12px;
             color: #333;
-            margin-left: 10px; /* Add space between gradient bar and labels */
+            position: relative;
+        }
+        .top-label {
+            position: absolute;
+            top: -10px;
+            width: 100%;
+            text-align: center;
+        }
+        .bottom-label {
+            position: absolute;
+            bottom: -10px;
+            width: 100%;
+            text-align: center;
+        }
+        .time-selector {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .time-selector button {
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            padding: 5px 10px;
+            margin: 0 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .time-selector button:hover {
+            background-color: #e0e0e0;
+        }
+        .time-selector button.active {
+            background-color: #0062cc;
+            color: white;
+            border-color: #0062cc;
         }
     </style>
 </head>
@@ -91,16 +152,26 @@
         
         <div class="error-message" id="errorMessage"></div>
         
+        <div class="metrics-container" id="metricsContainer">
+            <!-- Metrics will be populated here -->
+        </div>
+        
+        <div class="time-selector">
+            <button data-timeframe="1w">1 Week</button>
+            <button data-timeframe="1m">1 Month</button>
+            <button data-timeframe="3m">3 Months</button>
+            <button data-timeframe="1y">1 Year</button>
+            <button data-timeframe="all" class="active">All Time</button>
+        </div>
+        
         <div class="chart-container">
             <canvas id="riskHeatmapChart"></canvas>
-        </div>
-
-        <!-- Risk Key (Spectrum Gradient) -->
-        <div class="risk-key">
-            <div class="gradient-bar"></div>
-            <div class="risk-labels">
-                <span>Extreme Risk (Sell)</span>
-                <span>Lowest Risk (Buy)</span>
+            
+            <!-- Risk Key (Spectrum Gradient) -->
+            <div class="risk-key">
+                <div class="top-label">Extreme Risk</div>
+                <div class="gradient-bar"></div>
+                <div class="bottom-label">Low Risk</div>
             </div>
         </div>
     </div>
@@ -110,6 +181,7 @@
         let heatmapChart;
         let historicalData = null;
         let latestData = null;
+        let currentTimeFrame = 'all';
 
         // Backend URL - Replace with your actual backend URL
         const backendUrl = 'https://kas-risk-app.onrender.com'; 
@@ -131,6 +203,10 @@
                 if (data.latest_date) {
                     document.getElementById('updateTime').textContent = `Last updated: ${data.latest_date}`;
                 }
+                
+                // Update metrics display
+                updateMetricsDisplay(data);
+                
                 latestData = data; // Store latest data
                 return data;
             } catch (error) {
@@ -141,10 +217,52 @@
             }
         }
 
+        // Function to update metrics display
+        function updateMetricsDisplay(data) {
+            if (!data) return;
+            
+            const metricsContainer = document.getElementById('metricsContainer');
+            metricsContainer.innerHTML = '';
+            
+            // Define metrics to display
+            const metrics = [
+                { name: 'Price', value: `$${data.latest_price}`, suffix: '' },
+                { name: 'Market Cap', value: `$${(data.latest_market_cap / 1000000).toFixed(2)}M`, suffix: '' },
+                { name: 'Risk Score', value: `${(data.latest_risk * 100).toFixed(2)}`, suffix: '%', 
+                  color: getRiskColor(data.latest_risk) },
+                { name: 'Volatility (30d)', value: `${(data.volatility_30d * 100).toFixed(2)}`, suffix: '%' },
+                { name: 'RSI', value: data.rsi.toFixed(1), suffix: '' },
+                { name: 'Fear & Greed', value: data.fear_greed_index, suffix: '/100' },
+            ];
+            
+            // Create metric boxes
+            metrics.forEach(metric => {
+                const metricBox = document.createElement('div');
+                metricBox.className = 'metric-box';
+                
+                const title = document.createElement('div');
+                title.className = 'metric-title';
+                title.textContent = metric.name;
+                
+                const value = document.createElement('div');
+                value.className = 'metric-value';
+                value.textContent = `${metric.value}${metric.suffix}`;
+                
+                // Apply color styling if specified
+                if (metric.color) {
+                    value.style.color = metric.color;
+                }
+                
+                metricBox.appendChild(title);
+                metricBox.appendChild(value);
+                metricsContainer.appendChild(metricBox);
+            });
+        }
+
         // Function to fetch historical data
-        async function fetchHistoricalData() {
+        async function fetchHistoricalData(timeFrame = 'all') {
             try {
-                const response = await fetch(`${backendUrl}/data/historical?timeFrame=all`);
+                const response = await fetch(`${backendUrl}/data/historical?timeFrame=${timeFrame}`);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! Status: ${response.status}`);
@@ -174,9 +292,19 @@
 
         // Function to get risk color based on weighted risk value
         function getRiskColor(weightedRisk) {
-            // Map weighted risk (0 to 1) to a color gradient from blue to red
+            // Map weighted risk (0 to 1) to a color gradient from blue (low risk) to red (high risk)
+            // This aligns with the gradient bar in the UI (blue at bottom, red at top)
             const hue = (1 - weightedRisk) * 240; // Hue ranges from 240 (blue) to 0 (red)
             return `hsl(${hue}, 100%, 50%)`; // Use HSL for smooth color transition
+        }
+
+        // Function to get risk label based on weighted risk value
+        function getRiskLabel(weightedRisk) {
+            if (weightedRisk <= 0.2) return "Very Low Risk";
+            if (weightedRisk <= 0.4) return "Low Risk";
+            if (weightedRisk <= 0.6) return "Moderate Risk";
+            if (weightedRisk <= 0.8) return "High Risk";
+            return "Extreme Risk";
         }
 
         // Function to update the heatmap
@@ -193,9 +321,12 @@
             // Extract data
             const dates = historicalData.dates;
             const prices = historicalData.prices;
-            const weightedRisks = historicalData.weighted_risks; // Use weighted risk from the backend
-            const volatilities = historicalData.volatility;
-            const rsis = historicalData.rsi;
+            const weightedRisks = historicalData.weighted_risks;
+            const volatilities = historicalData.volatility || [];
+            const rsis = historicalData.rsi || [];
+            const nvtRatios = historicalData.nvt_ratio || [];
+            const fearGreedIndices = historicalData.fear_greed_index || [];
+            const volumes = historicalData.volume || [];
 
             // Destroy previous chart if it exists
             if (heatmapChart) {
@@ -255,18 +386,27 @@
                         tooltip: {
                             callbacks: {
                                 label: (context) => {
+                                    const index = context.dataIndex;
                                     const price = context.raw.y;
-                                    const weightedRisk = weightedRisks[context.dataIndex];
-                                    const volatility = volatilities[context.dataIndex];
-                                    const rsi = rsis[context.dataIndex];
-                                    const fearGreedIndex = latestData?.fear_greed_index || 'N/A';
+                                    const weightedRisk = weightedRisks[index];
+                                    const volatility = volatilities[index] || 0;
+                                    const rsi = rsis[index] || 0;
+                                    const nvtRatio = nvtRatios[index] || 0;
+                                    const fearGreedIndex = fearGreedIndices[index] || 'N/A';
+                                    const volume = volumes[index] || 0;
+                                    
+                                    // Add risk level label
+                                    const riskLabel = getRiskLabel(weightedRisk);
 
                                     return [
+                                        `Date: ${dates[index]}`,
                                         `Price: $${price.toFixed(6)}`,
-                                        `Weighted Risk: ${(weightedRisk * 100).toFixed(2)}%`,
-                                        `Volatility: ${volatility.toFixed(6)}`,
+                                        `Risk Level: ${riskLabel} (${(weightedRisk * 100).toFixed(2)}%)`,
+                                        `Volatility (30d): ${(volatility * 100).toFixed(2)}%`,
                                         `RSI: ${rsi.toFixed(2)}`,
-                                        `Fear & Greed Index: ${fearGreedIndex}`,
+                                        `NVT Ratio: ${nvtRatio.toFixed(2)}`,
+                                        `Fear & Greed: ${fearGreedIndex}/100`,
+                                        `Volume: $${(volume / 1000000).toFixed(2)}M`,
                                     ];
                                 }
                             }
@@ -275,20 +415,49 @@
                 }
             });
         }
+        
+        // Handle time frame selection
+        document.querySelectorAll('.time-selector button').forEach(button => {
+            button.addEventListener('click', async () => {
+                // Update active button
+                document.querySelectorAll('.time-selector button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                button.classList.add('active');
+                
+                // Get selected time frame
+                const timeFrame = button.dataset.timeframe;
+                currentTimeFrame = timeFrame;
+                
+                // Fetch data for selected time frame
+                historicalData = await fetchHistoricalData(timeFrame);
+                if (historicalData) {
+                    updateHeatmap();
+                }
+            });
+        });
+        
         // Initialize the application
         async function initialize() {
             try {
                 // Fetch historical data first
-                historicalData = await fetchHistoricalData();
+                historicalData = await fetchHistoricalData(currentTimeFrame);
                 if (historicalData) {
                     updateHeatmap();
                 }
                 
-                // Then fetch latest data for the timestamp
+                // Then fetch latest data for the timestamp and metrics
                 const latestData = await fetchLatestData();
-                if (latestData && latestData.latest_date) {
-                    document.getElementById('updateTime').textContent = `Last updated: ${latestData.latest_date}`;
-                }
+                
+                // Set up auto-refresh every 5 minutes
+                setInterval(async () => {
+                    await fetchLatestData();
+                    historicalData = await fetchHistoricalData(currentTimeFrame);
+                    if (historicalData) {
+                        updateHeatmap();
+                    }
+                }, 300000); // 5 minutes in milliseconds
+                
             } catch (error) {
                 console.error('Initialization error:', error);
                 document.getElementById('errorMessage').textContent = `Initialization error: ${error.message}`;
