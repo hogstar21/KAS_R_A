@@ -22,6 +22,7 @@
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             padding: 20px;
+            position: relative;
         }
         h1 {
             color: #333;
@@ -55,17 +56,30 @@
         }
         .risk-key {
             position: absolute;
-            right: 20px;
-            top: 20px;
-            background: rgba(255, 255, 255, 0.8);
-            padding: 10px;
-            border-radius: 4px;
+            right: -60px; /* Move further to the right */
+            top: 0;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .gradient-bar {
-            width: 20px;
-            height: 100px;
+            width: 30px; /* Wider gradient bar */
+            height: 100%; /* Full height of the chart */
             background: linear-gradient(to bottom, #8b0000, #ff0000, #ffff00, #00ff00, #0000ff);
-            margin-right: 10px;
+            border-radius: 4px;
+        }
+        .risk-labels {
+            position: absolute;
+            right: -90px; /* Position labels to the right of the gradient bar */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
+        }
+        .risk-labels span {
+            font-size: 14px;
+            color: #333;
         }
     </style>
 </head>
@@ -78,6 +92,15 @@
         
         <div class="chart-container">
             <canvas id="riskHeatmapChart"></canvas>
+        </div>
+
+        <!-- Risk Key (Spectrum Gradient) -->
+        <div class="risk-key">
+            <div class="gradient-bar"></div>
+            <div class="risk-labels">
+                <span>Extreme Risk (Sell)</span>
+                <span>Lowest Risk (Buy)</span>
+            </div>
         </div>
     </div>
 
@@ -142,30 +165,11 @@
             }
         }
 
-        // Function to convert wavelength to RGB color
-        function wavelengthToColor(wavelength) {
-            let r, g, b;
-            if (wavelength >= 740) {
-                r = 1.0; g = 0.0; b = 0.0; // Dark red
-            } else if (wavelength >= 610) {
-                r = 1.0; g = (wavelength - 610) / (740 - 610); b = 0.0; // Red to yellow
-            } else if (wavelength >= 590) {
-                r = 1.0; g = 1.0; b = 0.0; // Yellow
-            } else if (wavelength >= 570) {
-                r = (wavelength - 570) / (590 - 570); g = 1.0; b = 0.0; // Yellow to green
-            } else if (wavelength >= 500) {
-                r = 0.0; g = 1.0; b = (wavelength - 500) / (570 - 500); // Green to blue
-            } else {
-                r = 0.0; g = 0.0; b = 1.0; // Blue
-            }
-            return `rgb(${Math.floor(r * 255)}, ${Math.floor(g * 255)}, ${Math.floor(b * 255)})`;
-        }
-
-        // Function to get risk color based on wavelength
+        // Function to get risk color based on risk value
         function getRiskColor(risk) {
-            // Map risk (0 to 1) to wavelength (740 nm to 500 nm)
-            const wavelength = 740 - (risk * 240); // 740 nm (red) to 500 nm (blue)
-            return wavelengthToColor(wavelength);
+            // Map risk (0 to 1) to a color gradient from blue to red
+            const hue = (1 - risk) * 240; // Hue ranges from 240 (blue) to 0 (red)
+            return `hsl(${hue}, 100%, 50%)`; // Use HSL for smooth color transition
         }
 
         // Function to update the heatmap
@@ -246,30 +250,6 @@
                     }
                 }
             });
-
-            // Clear any existing risk keys
-            const existingRiskKey = document.querySelector('.risk-key');
-            if (existingRiskKey) {
-                existingRiskKey.remove();
-            }
-
-            // Add risk key to the chart
-            const riskKey = document.createElement('div');
-            riskKey.className = 'risk-key';
-            riskKey.innerHTML = `
-                <div style="display: flex; align-items: center;">
-                    <div class="gradient-bar"></div>
-                    <div>
-                        <div style="display: flex; align-items: center; margin-top: 5px;">
-                            <span>High Risk (Sell)</span>
-                        </div>
-                        <div style="display: flex; align-items: center; margin-top: 5px;">
-                            <span>Low Risk (Buy)</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.querySelector('.chart-container').appendChild(riskKey);
         }
 
         // Initialize the application
