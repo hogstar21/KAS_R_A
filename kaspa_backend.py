@@ -124,8 +124,8 @@ def get_historical_data():
         '1m': 30,
         '3m': 90,
         '1y': 365,
-        'all': 'max',  # Fetch entire history
-    }.get(time_frame, 'max')  # Default to entire history if invalid time frame
+        'all': 3650,  # Fetch ~10 years of data for "all history"
+    }.get(time_frame, 3650)  # Default to 3650 days if invalid time frame
 
     try:
         # Fetch data from CoinGecko
