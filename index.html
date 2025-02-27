@@ -22,16 +22,6 @@
       width: 100%;
       height: 600px;
     }
-    .time-frame-buttons {
-      text-align: center;
-      margin-bottom: 20px;
-    }
-    .time-frame-buttons button {
-      margin: 5px;
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
-    }
     .description {
       max-width: 800px;
       margin: 0 auto 20px;
@@ -91,25 +81,14 @@
     </p>
   </div>
 
-  <!-- Time Frame Buttons -->
-  <div class="time-frame-buttons">
-    <button onclick="updateChart('1w')">1 Week</button>
-    <button onclick="updateChart('1m')">1 Month</button>
-    <button onclick="updateChart('3m')">3 Months</button>
-    <button onclick="updateChart('1y')">1 Year</button>
-    <button onclick="updateChart('all')">All History</button>
-  </div>
-
   <!-- Heatmap Chart -->
   <div id="heatmap"></div>
 
   <script>
-    let currentTimeFrame = 'all'; // Default to entire history
-
     // Fetch historical data from your backend
-    async function fetchData(timeFrame) {
+    async function fetchData() {
       try {
-        const response = await fetch(`https://kas-risk-app.onrender.com/data/historical?timeFrame=${timeFrame}`);
+        const response = await fetch('https://kas-risk-app.onrender.com/data/historical?timeFrame=all');
         if (!response.ok) {
           throw new Error(`Server error: ${response.status}`);
         }
@@ -175,17 +154,16 @@
       Plotly.newPlot('heatmap', [heatmapData], layout);
     }
 
-    // Update the chart with new data
-    async function updateChart(timeFrame) {
-      currentTimeFrame = timeFrame || currentTimeFrame;
-      const data = await fetchData(currentTimeFrame);
+    // Fetch data and render the chart when the page loads
+    async function loadChart() {
+      const data = await fetchData();
       if (data) {
         renderHeatmap(data);
       }
     }
 
     // Initial load
-    updateChart();
+    loadChart();
   </script>
 </body>
 </html>
