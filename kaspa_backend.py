@@ -2,7 +2,6 @@ import os
 from flask import Flask, jsonify, request, send_from_directory
 import requests
 import pandas as pd
-import numpy as np
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -24,7 +23,7 @@ def fetch_kaspa_data():
     global latest_data, historical_data
     try:
         # CoinMarketCap API endpoint for current data
-        latest_url = "https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest"
+        latest_url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
         
         # Parameters for the API request
         params = {
@@ -42,6 +41,9 @@ def fetch_kaspa_data():
         response.raise_for_status()
         data = response.json()
         
+        # Debug: Print the API response
+        print("Latest Data API Response:", data)
+        
         # Extract current price, market cap, and volume
         kas_data = data['data']['KAS']
         current_price = kas_data['quote']['USD']['price']
@@ -49,20 +51,23 @@ def fetch_kaspa_data():
         volume_24h = kas_data['quote']['USD']['volume_24h']
         
         # Now fetch historical data
-        historical_url = "https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/historical"
+        historical_url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/ohlcv/historical"
         historical_params = {
             'symbol': 'KAS',
             'convert': 'USD',
-            'interval': 'daily',
-            'count': 500  # Maximum allowed by CoinMarketCap
+            'count': 500,  # Maximum allowed by CoinMarketCap
+            'interval': 'daily'
         }
         
         historical_response = requests.get(historical_url, headers=headers, params=historical_params)
         historical_response.raise_for_status()
         historical_data_raw = historical_response.json()
         
+        # Debug: Print the historical data response
+        print("Historical Data API Response:", historical_data_raw)
+        
         # Process historical data
-        quotes = historical_data_raw['data']['KAS']['quotes']
+        quotes = historical_data_raw['data']['quotes']
         
         # Extract timestamps and prices
         timestamps = []
@@ -71,9 +76,9 @@ def fetch_kaspa_data():
         market_caps = []
         
         for quote in quotes:
-            timestamp = quote['timestamp']
-            price = quote['quote']['USD']['price']
-            volume = quote['quote']['USD']['volume_24h']
+            timestamp = quote['quote']['USD']['timestamp']
+            price = quote['quote']['USD']['close']
+            volume = quote['quote']['USD']['volume']
             market_cap_value = quote['quote']['USD']['market_cap']
             
             timestamps.append(timestamp)
@@ -218,4 +223,4 @@ if __name__ == '__main__':
     
     # Bind to the PORT environment variable (for Render) or default to 5000
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=False)
