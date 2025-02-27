@@ -42,11 +42,11 @@ def fetch_kaspa_data():
         market_cap = kas_data['usd_market_cap']
         volume_24h = kas_data['usd_24h_vol']
         
-        # Now fetch historical data
+        # Now fetch historical data (limited to 365 days for free API users)
         historical_url = "https://api.coingecko.com/api/v3/coins/kaspa/market_chart"
         historical_params = {
             'vs_currency': 'usd',
-            'days': 'max'  # Fetch all available historical data
+            'days': '365'  # Limit to 365 days
         }
         
         historical_response = requests.get(historical_url, params=historical_params)
@@ -136,7 +136,6 @@ def fetch_kaspa_data():
         latest_data = {
             'error': str(e)
         }
-
 # Serve static files
 @app.route('/')
 def serve_index():
