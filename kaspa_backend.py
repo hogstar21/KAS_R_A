@@ -228,9 +228,9 @@ def fetch_kaspa_data():
         weights = {
             'volatility': 0.10,  # Higher weight for volatility
             'technical': 0.10,   # Technical indicators
-            'sentiment': 0.60,   # Market sentiment
+            'sentiment': 0.65,   # Market sentiment
             'network': 0.05,     # Network activity
-            'valuation': 0.15    # Risk/reward and valuation
+            'valuation': 0.10    # Risk/reward and valuation
         }
         
         df['weighted_risk'] = (
