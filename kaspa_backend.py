@@ -30,7 +30,7 @@ def fetch_fear_greed_data(days=365):
     """
     try:
         # Replace with your actual Fear and Greed API endpoint and parameters
-        fear_greed_url = f"https://fear-and-greed-index.p.rapidapi.com"
+        fear_greed_url = f"https://fear-and-greed-index.p.rapidapi.com/v1/fgi"
         params = {
             'api_key': FEAR_GREED_API_KEY,
             'days': days
