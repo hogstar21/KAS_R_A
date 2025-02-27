@@ -64,7 +64,7 @@ def fetch_fear_greed_data(days=365):
         })
         
         # Calculate fear_greed_risk (0-1 scale where 0 = greedy = higher risk, 100 = fearful = lower risk)
-        fg_df['fear_greed_risk'] = (100 - fg_df['fear_greed_index']) / 100
+        fg_df['fear_greed_risk'] = fg_df['fear_greed_index'] / 100
         
         # Sort by date (ascending)
         fg_df = fg_df.sort_values('date')
