@@ -109,6 +109,7 @@
         // Global variables
         let heatmapChart;
         let historicalData = null;
+        let latestData = null;
 
         // Backend URL - Replace with your actual backend URL
         const backendUrl = 'https://kas-risk-app.onrender.com'; 
@@ -130,6 +131,7 @@
                 if (data.latest_date) {
                     document.getElementById('updateTime').textContent = `Last updated: ${data.latest_date}`;
                 }
+                latestData = data; // Store latest data
                 return data;
             } catch (error) {
                 console.error('Error fetching latest data:', error);
@@ -157,6 +159,7 @@
                 }
                 
                 document.getElementById('errorMessage').style.display = 'none';
+                historicalData = data; // Store historical data
                 return data;
             } catch (error) {
                 console.error('Error fetching historical data:', error);
@@ -166,10 +169,10 @@
             }
         }
 
-        // Function to get risk color based on risk value
-        function getRiskColor(risk) {
-            // Map risk (0 to 1) to a color gradient from blue to red
-            const hue = (1 - risk) * 240; // Hue ranges from 240 (blue) to 0 (red)
+        // Function to get risk color based on weighted risk value
+        function getRiskColor(weightedRisk) {
+            // Map weighted risk (0 to 1) to a color gradient from blue to red
+            const hue = (1 - weightedRisk) * 240; // Hue ranges from 240 (blue) to 0 (red)
             return `hsl(${hue}, 100%, 50%)`; // Use HSL for smooth color transition
         }
 
@@ -182,7 +185,10 @@
             // Extract data
             const dates = historicalData.dates;
             const prices = historicalData.prices;
-            const risks = historicalData.risks; // Use pre-calculated risk from the backend
+            const weightedRisks = historicalData.weighted_risks; // Use weighted risk from the backend
+            const volatilities = historicalData.volatility;
+            const rsis = historicalData.rsi;
+            const nvtRatios = historicalData.nvt_ratio;
 
             // Destroy previous chart if it exists
             if (heatmapChart) {
@@ -200,7 +206,7 @@
                             x: new Date(dates[index]), // X-axis: Date
                             y: price, // Y-axis: Price
                         })),
-                        backgroundColor: risks.map(risk => getRiskColor(risk)), // Color based on risk
+                        backgroundColor: weightedRisks.map(weightedRisk => getRiskColor(weightedRisk)), // Color based on weighted risk
                         borderColor: 'rgba(0, 0, 0, 0.2)', // Border color for dots
                         borderWidth: 1,
                         pointRadius: 5, // Size of dots
@@ -243,8 +249,20 @@
                             callbacks: {
                                 label: (context) => {
                                     const price = context.raw.y;
-                                    const risk = risks[context.dataIndex];
-                                    return `Price: $${price.toFixed(6)} | Risk: ${(risk * 100).toFixed(2)}%`;
+                                    const weightedRisk = weightedRisks[context.dataIndex];
+                                    const volatility = volatilities[context.dataIndex];
+                                    const rsi = rsis[context.dataIndex];
+                                    const nvtRatio = nvtRatios[context.dataIndex];
+                                    const fearGreedIndex = latestData?.fear_greed_index || 'N/A';
+
+                                    return [
+                                        `Price: $${price.toFixed(6)}`,
+                                        `Weighted Risk: ${(weightedRisk * 100).toFixed(2)}%`,
+                                        `Volatility: ${volatility.toFixed(6)}`,
+                                        `RSI: ${rsi.toFixed(2)}`,
+                                        `NVT Ratio: ${nvtRatio.toFixed(2)}`,
+                                        `Fear & Greed Index: ${fearGreedIndex}`,
+                                    ];
                                 }
                             }
                         }
