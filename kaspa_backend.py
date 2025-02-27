@@ -1,13 +1,20 @@
 import os
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 import requests
 import pandas as pd
 import numpy as np
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask_cors import CORS  # Import CORS
+from flask_cors import CORS
+from dotenv import load_dotenv
 
-app = Flask(__name__)
+# Load environment variables from .env file
+load_dotenv()
+
+app = Flask(__name__, static_folder='static')
 CORS(app)  # Enable CORS for all routes
+
+# Get API key from environment variable
+CMC_API_KEY = os.getenv('COINMARKETCAP_API_KEY')
 
 # Global variable to store the latest data
 latest_data = {}
@@ -16,197 +23,199 @@ historical_data = pd.DataFrame()
 def fetch_kaspa_data():
     global latest_data, historical_data
     try:
-        # CoinGecko API endpoint for Kaspa (KAS)
-        url = "https://api.coingecko.com/api/v3/coins/kaspa/market_chart"
-
+        # CoinMarketCap API endpoint for current data
+        latest_url = "https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest"
+        
         # Parameters for the API request
         params = {
-            'vs_currency': 'usd',  # Currency to compare against (USD)
-            'days': 'max',         # Fetch entire history
-            'interval': 'daily'    # Data interval (daily)
+            'symbol': 'KAS',
+            'convert': 'USD'
         }
-
-        # Make the API request
-        response = requests.get(url, params=params)
-        response.raise_for_status()  # Raise an error for bad status codes
+        
+        # Headers including API key
+        headers = {
+            'X-CMC_PRO_API_KEY': CMC_API_KEY
+        }
+        
+        # Make the API request for current data
+        response = requests.get(latest_url, headers=headers, params=params)
+        response.raise_for_status()
         data = response.json()
-
-        # Extract price, volume, and market cap data
-        prices = data['prices']
-        volumes = data['total_volumes']
-        market_caps = data['market_caps']
-
-        # Convert to a pandas DataFrame
-        df = pd.DataFrame(prices, columns=['timestamp', 'price'])
-        df['volume'] = [v[1] for v in volumes]
-        df['market_cap'] = [m[1] for m in market_caps]
-
-        # Convert timestamp to readable date
-        df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
-
-        # Drop the timestamp column
+        
+        # Extract current price, market cap, and volume
+        kas_data = data['data']['KAS']
+        current_price = kas_data['quote']['USD']['price']
+        market_cap = kas_data['quote']['USD']['market_cap']
+        volume_24h = kas_data['quote']['USD']['volume_24h']
+        
+        # Now fetch historical data
+        historical_url = "https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/historical"
+        historical_params = {
+            'symbol': 'KAS',
+            'convert': 'USD',
+            'interval': 'daily',
+            'count': 500  # Maximum allowed by CoinMarketCap
+        }
+        
+        historical_response = requests.get(historical_url, headers=headers, params=historical_params)
+        historical_response.raise_for_status()
+        historical_data_raw = historical_response.json()
+        
+        # Process historical data
+        quotes = historical_data_raw['data']['KAS']['quotes']
+        
+        # Extract timestamps and prices
+        timestamps = []
+        prices = []
+        volumes = []
+        market_caps = []
+        
+        for quote in quotes:
+            timestamp = quote['timestamp']
+            price = quote['quote']['USD']['price']
+            volume = quote['quote']['USD']['volume_24h']
+            market_cap_value = quote['quote']['USD']['market_cap']
+            
+            timestamps.append(timestamp)
+            prices.append(price)
+            volumes.append(volume)
+            market_caps.append(market_cap_value)
+        
+        # Create DataFrame
+        df = pd.DataFrame({
+            'timestamp': timestamps,
+            'price': prices,
+            'volume': volumes,
+            'market_cap': market_caps
+        })
+        
+        # Convert timestamp to datetime
+        df['date'] = pd.to_datetime(df['timestamp'])
         df = df.drop(columns=['timestamp'])
-
+        
+        # Sort by date
+        df = df.sort_values('date')
+        
         # Calculate risk metrics
         min_price = df['price'].min()
         max_price = df['price'].max()
-
+        
         # Handle division by zero
         if max_price == min_price:
             df['risk'] = 0  # Set risk to 0 if max_price == min_price
         else:
             df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Price-based risk
-
+            
         # Calculate volatility (30-day rolling standard deviation)
-        df['volatility'] = df['price'].rolling(window=30).std()
-
+        df['volatility'] = df['price'].rolling(window=min(30, len(df))).std()
+        
         # Handle NaN values in volatility
         df['volatility'] = df['volatility'].fillna(0)  # Replace NaN with 0
-
+        
         # Calculate RSI (Relative Strength Index)
         delta = df['price'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
+        gain = (delta.where(delta > 0, 0)).rolling(window=min(14, len(df)-1)).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=min(14, len(df)-1)).mean()
+        
+        # Avoid division by zero
+        rs = gain / loss.replace(0, 0.00001)
         df['rsi'] = 100 - (100 / (1 + rs))
-
+        
         # Handle NaN values in RSI
         df['rsi'] = df['rsi'].fillna(50)  # Replace NaN with 50 (neutral RSI)
-
+        
         # Calculate moving averages (50-day and 200-day)
-        df['ma_50'] = df['price'].rolling(window=50).mean()
-        df['ma_200'] = df['price'].rolling(window=200).mean()
-
+        df['ma_50'] = df['price'].rolling(window=min(50, len(df))).mean()
+        df['ma_200'] = df['price'].rolling(window=min(200, len(df))).mean()
+        
         # Handle NaN values in moving averages
         df['ma_50'] = df['ma_50'].fillna(df['price'])  # Replace NaN with current price
         df['ma_200'] = df['ma_200'].fillna(df['price'])  # Replace NaN with current price
-
+        
         # Calculate risk/reward ratio (simplified)
-        df['risk_reward'] = df['price'].pct_change(periods=30) / df['volatility']
-
+        df['risk_reward'] = df['price'].pct_change(periods=min(30, len(df)-1)) / (df['volatility'] + 0.00001)  # Avoid division by zero
+        
         # Handle NaN values in risk/reward ratio
         df['risk_reward'] = df['risk_reward'].fillna(0)  # Replace NaN with 0
-
+        
         # Store the latest data
         latest_data = {
             'latest_date': df['date'].iloc[-1].strftime('%Y-%m-%d %H:%M:%S'),  # Timestamp
-            'latest_market_cap': round(df['market_cap'].iloc[-1], 2),          # Market cap (rounded)
-            'latest_price': round(df['price'].iloc[-1], 6),                    # Price (rounded)
-            'latest_volume': round(df['volume'].iloc[-1], 2),                  # Volume (rounded)
-            'min_price': round(min_price, 6),                                  # Min price (rounded)
-            'max_price': round(max_price, 6),                                  # Max price (rounded)
+            'latest_market_cap': round(market_cap, 2),                        # Market cap (rounded)
+            'latest_price': round(current_price, 6),                          # Price (rounded)
+            'latest_volume': round(volume_24h, 2),                            # Volume (rounded)
+            'min_price': round(min_price, 6),                                 # Min price (rounded)
+            'max_price': round(max_price, 6),                                 # Max price (rounded)
         }
-
+        
         # Update historical data
         historical_data = df
+        
+        print("Data successfully fetched from CoinMarketCap API")
     except Exception as e:
         # Handle errors gracefully
+        print(f"Error fetching data: {str(e)}")
         latest_data = {
             'error': str(e)
         }
 
-# Schedule data fetching every hour
-scheduler = BackgroundScheduler()
-scheduler.add_job(fetch_kaspa_data, 'interval', hours=1)
-scheduler.start()
-
-# Root route
+# Serve static files
 @app.route('/')
-def home():
-    return "Welcome to the Kaspa Risk Metrics API! Use the /data endpoint to get metrics."
+def serve_index():
+    return send_from_directory('static', 'index.html')
+
+# Latest data route
+@app.route('/data/latest')
+def get_latest_data():
+    return jsonify(latest_data)
 
 # Historical data route
 @app.route('/data/historical')
 def get_historical_data():
     time_frame = request.args.get('timeFrame', 'all')  # Default to entire history
-    days = {
-        '1w': 7,
-        '1m': 30,
-        '3m': 90,
-        '1y': 365,
-        'all': 3650,  # Fetch ~10 years of data for "all history"
-    }.get(time_frame, 3650)  # Default to 3650 days if invalid time frame
-
-    try:
-        # Fetch data from CoinGecko
-        url = "https://api.coingecko.com/api/v3/coins/kaspa/market_chart"
-        params = {
-            'vs_currency': 'usd',
-            'days': days,
-            'interval': 'daily',
-        }
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-
-        # Process data
-        prices = data['prices']
-        df = pd.DataFrame(prices, columns=['timestamp', 'price'])
-        df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df = df.drop(columns=['timestamp'])
-
-        # Calculate risk metrics
-        min_price = df['price'].min()
-        max_price = df['price'].max()
-
-        # Handle division by zero
-        if max_price == min_price:
-            df['risk'] = 0  # Set risk to 0 if max_price == min_price
-        else:
-            df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Price-based risk
-
-        # Calculate volatility (30-day rolling standard deviation)
-        df['volatility'] = df['price'].rolling(window=30).std()
-
-        # Handle NaN values in volatility
-        df['volatility'] = df['volatility'].fillna(0)  # Replace NaN with 0
-
-        # Calculate RSI (Relative Strength Index)
-        delta = df['price'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        df['rsi'] = 100 - (100 / (1 + rs))
-
-        # Handle NaN values in RSI
-        df['rsi'] = df['rsi'].fillna(50)  # Replace NaN with 50 (neutral RSI)
-
-        # Calculate moving averages (50-day and 200-day)
-        df['ma_50'] = df['price'].rolling(window=50).mean()
-        df['ma_200'] = df['price'].rolling(window=200).mean()
-
-        # Handle NaN values in moving averages
-        df['ma_50'] = df['ma_50'].fillna(df['price'])  # Replace NaN with current price
-        df['ma_200'] = df['ma_200'].fillna(df['price'])  # Replace NaN with current price
-
-        # Calculate risk/reward ratio (simplified)
-        df['risk_reward'] = df['price'].pct_change(periods=30) / df['volatility']
-
-        # Handle NaN values in risk/reward ratio
-        df['risk_reward'] = df['risk_reward'].fillna(0)  # Replace NaN with 0
-
-        # Prepare data for the frontend
-        cleaned_data = df.dropna(subset=['risk'])
-        historical_chart_data = {
-            'dates': cleaned_data['date'].dt.strftime('%Y-%m-%d').tolist(),
-            'prices': cleaned_data['price'].tolist(),
-            'risks': cleaned_data['risk'].tolist(),
-            'volatility': cleaned_data['volatility'].tolist(),
-            'rsi': cleaned_data['rsi'].tolist(),
-            'ma_50': cleaned_data['ma_50'].tolist(),
-            'ma_200': cleaned_data['ma_200'].tolist(),
-            'risk_reward': cleaned_data['risk_reward'].tolist(),
-        }
-        return jsonify(historical_chart_data)
-    except Exception as e:
-        # Log the error for debugging
-        print(f"Error: {e}")
-        return jsonify({'error': str(e)}), 500
+    
+    if historical_data.empty:
+        return jsonify({'error': 'No historical data available'}), 404
+    
+    # Filter data based on time frame
+    df = historical_data.copy()
+    
+    if time_frame != 'all':
+        days = {
+            '1w': 7,
+            '1m': 30, 
+            '3m': 90,
+            '1y': 365,
+        }.get(time_frame, len(df))
+        
+        # Filter to the last N days
+        end_date = df['date'].max()
+        start_date = end_date - pd.Timedelta(days=days)
+        df = df[df['date'] >= start_date]
+    
+    # Prepare data for the frontend
+    cleaned_data = df.dropna(subset=['risk'])
+    historical_chart_data = {
+        'dates': cleaned_data['date'].dt.strftime('%Y-%m-%d').tolist(),
+        'prices': cleaned_data['price'].tolist(),
+        'risks': cleaned_data['risk'].tolist(),
+        'volatility': cleaned_data['volatility'].tolist(),
+        'rsi': cleaned_data['rsi'].tolist(),
+        'ma_50': cleaned_data['ma_50'].tolist(),
+        'ma_200': cleaned_data['ma_200'].tolist(),
+        'risk_reward': cleaned_data['risk_reward'].tolist(),
+    }
+    return jsonify(historical_chart_data)
 
 if __name__ == '__main__':
     # Fetch data immediately on startup
     fetch_kaspa_data()
-
+    
+    # Schedule data fetching every hour
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(fetch_kaspa_data, 'interval', hours=1)
+    scheduler.start()
+    
     # Bind to the PORT environment variable (for Render) or default to 5000
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
