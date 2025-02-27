@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kaspa Risk Metric Heatmap</title>
+  <title>Kaspa ($KAS) Risk Metric Heatmap</title>
   <!-- Use the latest Plotly.js version -->
   <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
   <style>
@@ -11,27 +11,46 @@
       font-family: Arial, sans-serif;
       margin: 0;
       padding: 20px;
-      background-color: #f4f4f9;
+      background-color: #fff; /* White background */
+      color: #000; /* Black text */
     }
     h1 {
       text-align: center;
-      color: #333;
+      color: #000; /* Black title */
     }
     #heatmap {
       width: 100%;
       height: 600px;
     }
+    .time-frame-buttons {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .time-frame-buttons button {
+      margin: 5px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <h1>Kaspa ($KAS) Risk Metric Heatmap</h1>
+  <div class="time-frame-buttons">
+    <button onclick="updateChart('1w')">1 Week</button>
+    <button onclick="updateChart('1m')">1 Month</button>
+    <button onclick="updateChart('3m')">3 Months</button>
+    <button onclick="updateChart('1y')">1 Year</button>
+  </div>
   <div id="heatmap"></div>
 
   <script>
+    let currentTimeFrame = '1y'; // Default time frame
+
     // Fetch historical data from your backend
-    async function fetchData() {
+    async function fetchData(timeFrame) {
       try {
-        const response = await fetch('https://kas-risk-app.onrender.com/data/historical');
+        const response = await fetch(`https://kas-risk-app.onrender.com/data/historical?timeFrame=${timeFrame}`);
         const data = await response.json();
         return data;
       } catch (error) {
@@ -44,17 +63,45 @@
     function renderHeatmap(data) {
       const heatmapData = {
         x: data.dates, // Dates on the x-axis
-        y: data.risks, // Risk metrics on the y-axis
-        z: [data.prices], // Price as the intensity (color scale)
-        type: 'heatmap',
-        colorscale: 'Viridis', // Color scale for the heatmap
-        colorbar: { title: 'Price (USD)' }, // Label for the color scale
+        y: data.prices, // Prices on the y-axis
+        mode: 'markers', // Display as individual dots
+        marker: {
+          size: 10,
+          color: data.risks, // Risk values determine color
+          colorscale: [
+            [0, 'blue'],   // Low risk
+            [0.5, 'green'], // Medium risk
+            [1, 'red']     // High risk
+          ],
+          colorbar: {
+            title: 'Risk Level',
+            titleside: 'right',
+            titlefont: { color: '#000' }, // Black text for colorbar title
+            tickfont: { color: '#000' }, // Black text for colorbar ticks
+          },
+        },
+        type: 'scatter', // Scatter plot for dots
       };
 
       const layout = {
         title: 'Kaspa Risk Metrics Over Time',
-        xaxis: { title: 'Date' },
-        yaxis: { title: 'Risk (Volatility)' },
+        titlefont: { color: '#000' }, // Black text for chart title
+        xaxis: {
+          title: 'Date',
+          titlefont: { color: '#000' }, // Black text for x-axis title
+          tickfont: { color: '#000' }, // Black text for x-axis ticks
+          gridcolor: '#ddd', // Light gray grid lines
+          type: 'date', // Ensure dates are displayed correctly
+          tickformat: '%b %Y', // Format as "Month Year" (e.g., May 2024)
+        },
+        yaxis: {
+          title: 'Price (USD)',
+          titlefont: { color: '#000' }, // Black text for y-axis title
+          tickfont: { color: '#000' }, // Black text for y-axis ticks
+          gridcolor: '#ddd', // Light gray grid lines
+        },
+        plot_bgcolor: '#fff', // White background for the plot area
+        paper_bgcolor: '#fff', // White background for the chart area
         width: 1200,
         height: 600,
       };
@@ -63,8 +110,9 @@
     }
 
     // Update the chart with new data
-    async function updateChart() {
-      const data = await fetchData();
+    async function updateChart(timeFrame) {
+      currentTimeFrame = timeFrame || currentTimeFrame;
+      const data = await fetchData(currentTimeFrame);
       if (data) {
         renderHeatmap(data);
       }
@@ -72,9 +120,6 @@
 
     // Initial load
     updateChart();
-
-    // Update every 5 minutes
-    setInterval(updateChart, 5 * 60 * 1000);
   </script>
 </body>
 </html>
