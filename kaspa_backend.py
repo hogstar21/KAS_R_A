@@ -12,9 +12,6 @@ load_dotenv()
 app = Flask(__name__, static_folder='static')
 CORS(app)  # Enable CORS for all routes
 
-# Get API key from environment variable
-CMC_API_KEY = os.getenv('COINMARKETCAP_API_KEY')
-
 # Global variable to store the latest data
 latest_data = {}
 historical_data = pd.DataFrame()
@@ -22,22 +19,17 @@ historical_data = pd.DataFrame()
 def fetch_kaspa_data():
     global latest_data, historical_data
     try:
-        # CoinMarketCap API endpoint for current data
-        latest_url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
-        
-        # Parameters for the API request
-        params = {
-            'symbol': 'KAS',
-            'convert': 'USD'
-        }
-        
-        # Headers including API key
-        headers = {
-            'X-CMC_PRO_API_KEY': CMC_API_KEY
+        # CoinGecko API endpoint for current data
+        latest_url = "https://api.coingecko.com/api/v3/simple/price"
+        latest_params = {
+            'ids': 'kaspa',
+            'vs_currencies': 'usd',
+            'include_market_cap': 'true',
+            'include_24hr_vol': 'true'
         }
         
         # Make the API request for current data
-        response = requests.get(latest_url, headers=headers, params=params)
+        response = requests.get(latest_url, params=latest_params)
         response.raise_for_status()
         data = response.json()
         
@@ -45,21 +37,19 @@ def fetch_kaspa_data():
         print("Latest Data API Response:", data)
         
         # Extract current price, market cap, and volume
-        kas_data = data['data']['KAS']
-        current_price = kas_data['quote']['USD']['price']
-        market_cap = kas_data['quote']['USD']['market_cap']
-        volume_24h = kas_data['quote']['USD']['volume_24h']
+        kas_data = data['kaspa']
+        current_price = kas_data['usd']
+        market_cap = kas_data['usd_market_cap']
+        volume_24h = kas_data['usd_24h_vol']
         
         # Now fetch historical data
-        historical_url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/ohlcv/historical"
+        historical_url = "https://api.coingecko.com/api/v3/coins/kaspa/market_chart"
         historical_params = {
-            'symbol': 'KAS',
-            'convert': 'USD',
-            'count': 500,  # Maximum allowed by CoinMarketCap
-            'interval': 'daily'
+            'vs_currency': 'usd',
+            'days': 'max'  # Fetch all available historical data
         }
         
-        historical_response = requests.get(historical_url, headers=headers, params=historical_params)
+        historical_response = requests.get(historical_url, params=historical_params)
         historical_response.raise_for_status()
         historical_data_raw = historical_response.json()
         
@@ -67,35 +57,18 @@ def fetch_kaspa_data():
         print("Historical Data API Response:", historical_data_raw)
         
         # Process historical data
-        quotes = historical_data_raw['data']['quotes']
-        
-        # Extract timestamps and prices
-        timestamps = []
-        prices = []
-        volumes = []
-        market_caps = []
-        
-        for quote in quotes:
-            timestamp = quote['quote']['USD']['timestamp']
-            price = quote['quote']['USD']['close']
-            volume = quote['quote']['USD']['volume']
-            market_cap_value = quote['quote']['USD']['market_cap']
-            
-            timestamps.append(timestamp)
-            prices.append(price)
-            volumes.append(volume)
-            market_caps.append(market_cap_value)
+        prices = historical_data_raw['prices']
+        timestamps = [x[0] for x in prices]  # Extract timestamps
+        prices = [x[1] for x in prices]      # Extract prices
         
         # Create DataFrame
         df = pd.DataFrame({
             'timestamp': timestamps,
-            'price': prices,
-            'volume': volumes,
-            'market_cap': market_caps
+            'price': prices
         })
         
         # Convert timestamp to datetime
-        df['date'] = pd.to_datetime(df['timestamp'])
+        df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
         df = df.drop(columns=['timestamp'])
         
         # Sort by date
@@ -156,7 +129,7 @@ def fetch_kaspa_data():
         # Update historical data
         historical_data = df
         
-        print("Data successfully fetched from CoinMarketCap API")
+        print("Data successfully fetched from CoinGecko API")
     except Exception as e:
         # Handle errors gracefully
         print(f"Error fetching data: {str(e)}")
