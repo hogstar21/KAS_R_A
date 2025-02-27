@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_file
 import requests
 import pandas as pd
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-app = Flask(__name__, static_folder='static')
+app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 # Global variable to store the latest data
@@ -136,10 +136,11 @@ def fetch_kaspa_data():
         latest_data = {
             'error': str(e)
         }
-# Serve static files
+
+# Serve the index.html file
 @app.route('/')
 def serve_index():
-    return send_from_directory('static', 'index.html')
+    return send_file('index.html')
 
 # Latest data route
 @app.route('/data/latest')
