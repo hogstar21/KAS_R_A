@@ -182,99 +182,103 @@
 
         // Function to update the heatmap
         function updateHeatmap() {
-            if (!historicalData) return;
+    if (!historicalData || !historicalData.dates || !historicalData.prices || !historicalData.weighted_risks) {
+        console.error("Historical data is missing or incomplete:", historicalData);
+        document.getElementById('errorMessage').textContent = "Error: Incomplete historical data.";
+        document.getElementById('errorMessage').style.display = 'block';
+        return;
+    }
 
-            const ctx = document.getElementById('riskHeatmapChart').getContext('2d');
+    const ctx = document.getElementById('riskHeatmapChart').getContext('2d');
 
-            // Extract data
-            const dates = historicalData.dates;
-            const prices = historicalData.prices;
-            const weightedRisks = historicalData.weighted_risks; // Use weighted risk from the backend
-            const volatilities = historicalData.volatility;
-            const rsis = historicalData.rsi;
-            const nvtRatios = historicalData.nvt_ratio;
+    // Extract data
+    const dates = historicalData.dates;
+    const prices = historicalData.prices;
+    const weightedRisks = historicalData.weighted_risks; // Use weighted risk from the backend
+    const volatilities = historicalData.volatility;
+    const rsis = historicalData.rsi;
+    const nvtRatios = historicalData.nvt_ratio;
 
-            // Destroy previous chart if it exists
-            if (heatmapChart) {
-                heatmapChart.destroy();
-            }
+    // Destroy previous chart if it exists
+    if (heatmapChart) {
+        heatmapChart.destroy();
+    }
 
-            // Create the scatter plot
-            heatmapChart = new Chart(ctx, {
-                type: 'scatter', // Use scatter plot for dots
-                data: {
-                    labels: dates,
-                    datasets: [{
-                        label: 'Price',
-                        data: prices.map((price, index) => ({
-                            x: new Date(dates[index]), // X-axis: Date
-                            y: price, // Y-axis: Price
-                        })),
-                        backgroundColor: weightedRisks.map(weightedRisk => getRiskColor(weightedRisk)), // Color based on weighted risk
-                        borderColor: 'rgba(0, 0, 0, 0.2)', // Border color for dots
-                        borderWidth: 1,
-                        pointRadius: 5, // Size of dots
-                        pointHoverRadius: 7, // Size of dots on hover
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: 'day',
-                                displayFormats: {
-                                    day: 'MMM d',
-                                }
-                            },
-                            grid: {
-                                display: false,
-                            },
-                            title: {
-                                display: true,
-                                text: 'Date',
-                            }
-                        },
-                        y: {
-                            beginAtZero: false,
-                            title: {
-                                display: true,
-                                text: 'Price (USD)',
-                            }
+    // Create the scatter plot
+    heatmapChart = new Chart(ctx, {
+        type: 'scatter', // Use scatter plot for dots
+        data: {
+            labels: dates,
+            datasets: [{
+                label: 'Price',
+                data: prices.map((price, index) => ({
+                    x: new Date(dates[index]), // X-axis: Date
+                    y: price, // Y-axis: Price
+                })),
+                backgroundColor: weightedRisks.map(weightedRisk => getRiskColor(weightedRisk)), // Color based on weighted risk
+                borderColor: 'rgba(0, 0, 0, 0.2)', // Border color for dots
+                borderWidth: 1,
+                pointRadius: 5, // Size of dots
+                pointHoverRadius: 7, // Size of dots on hover
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'day',
+                        displayFormats: {
+                            day: 'MMM d',
                         }
                     },
-                    plugins: {
-                        legend: {
-                            display: false,
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: (context) => {
-                                    const price = context.raw.y;
-                                    const weightedRisk = weightedRisks[context.dataIndex];
-                                    const volatility = volatilities[context.dataIndex];
-                                    const rsi = rsis[context.dataIndex];
-                                    const nvtRatio = nvtRatios[context.dataIndex];
-                                    const fearGreedIndex = latestData?.fear_greed_index || 'N/A';
+                    grid: {
+                        display: false,
+                    },
+                    title: {
+                        display: true,
+                        text: 'Date',
+                    }
+                },
+                y: {
+                    beginAtZero: false,
+                    title: {
+                        display: true,
+                        text: 'Price (USD)',
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false,
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const price = context.raw.y;
+                            const weightedRisk = weightedRisks[context.dataIndex];
+                            const volatility = volatilities[context.dataIndex];
+                            const rsi = rsis[context.dataIndex];
+                            const nvtRatio = nvtRatios[context.dataIndex];
+                            const fearGreedIndex = latestData?.fear_greed_index || 'N/A';
 
-                                    return [
-                                        `Price: $${price.toFixed(6)}`,
-                                        `Weighted Risk: ${(weightedRisk * 100).toFixed(2)}%`,
-                                        `Volatility: ${volatility.toFixed(6)}`,
-                                        `RSI: ${rsi.toFixed(2)}`,
-                                        `NVT Ratio: ${nvtRatio.toFixed(2)}`,
-                                        `Fear & Greed Index: ${fearGreedIndex}`,
-                                    ];
-                                }
-                            }
+                            return [
+                                `Price: $${price.toFixed(6)}`,
+                                `Weighted Risk: ${(weightedRisk * 100).toFixed(2)}%`,
+                                `Volatility: ${volatility.toFixed(6)}`,
+                                `RSI: ${rsi.toFixed(2)}`,
+                                `NVT Ratio: ${nvtRatio.toFixed(2)}`,
+                                `Fear & Greed Index: ${fearGreedIndex}`,
+                            ];
                         }
                     }
                 }
-            });
+            }
         }
-
+    });
+}
         // Initialize the application
         async function initialize() {
             try {
