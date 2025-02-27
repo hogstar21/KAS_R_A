@@ -72,13 +72,44 @@
         let heatmapChart;
         let historicalData = null;
 
-        // Backend URL
-        const backendUrl = 'https://your-backend-url.onrender.com'; // Replace with your backend URL
+        // Backend URL - Replace with your actual backend URL
+        const backendUrl = 'https://kas-risk-app.onrender.com'; 
+
+        // Function to fetch latest data
+        async function fetchLatestData() {
+            try {
+                const response = await fetch(`${backendUrl}/data/latest`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    document.getElementById('errorMessage').textContent = `Error: ${data.error}`;
+                    document.getElementById('errorMessage').style.display = 'block';
+                    return null;
+                }
+                
+                document.getElementById('errorMessage').style.display = 'none';
+                // Update the last updated timestamp
+                if (data.latest_date) {
+                    document.getElementById('updateTime').textContent = `Last updated: ${data.latest_date}`;
+                }
+                return data;
+            } catch (error) {
+                console.error('Error fetching latest data:', error);
+                document.getElementById('errorMessage').textContent = `Error: ${error.message}`;
+                document.getElementById('errorMessage').style.display = 'block';
+                return null;
+            }
+        }
 
         // Function to fetch historical data
         async function fetchHistoricalData() {
             try {
                 const response = await fetch(`${backendUrl}/data/historical?timeFrame=all`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
                 const data = await response.json();
                 
                 if (data.error) {
@@ -97,14 +128,6 @@
             }
         }
 
-        // Function to calculate risk level
-        function calculateRiskLevel(price, minPrice, maxPrice) {
-            // Normalize price between 0 and 1
-            const normalizedPrice = (price - minPrice) / (maxPrice - minPrice);
-            // Map normalized price to risk level (0 = low risk, 1 = high risk)
-            return normalizedPrice;
-        }
-
         // Function to update the heatmap
         function updateHeatmap() {
             if (!historicalData) return;
@@ -114,11 +137,7 @@
             // Extract data
             const dates = historicalData.dates;
             const prices = historicalData.prices;
-            const minPrice = Math.min(...prices);
-            const maxPrice = Math.max(...prices);
-
-            // Calculate risk levels
-            const riskLevels = prices.map(price => calculateRiskLevel(price, minPrice, maxPrice));
+            const risks = historicalData.risks; // Use pre-calculated risk from the backend
 
             // Destroy previous chart if it exists
             if (heatmapChart) {
@@ -134,7 +153,7 @@
                         label: 'Price',
                         data: prices,
                         borderColor: 'rgba(75, 192, 192, 0.2)',
-                        backgroundColor: riskLevels.map(risk => {
+                        backgroundColor: risks.map(risk => {
                             // Map risk level to color
                             const red = Math.floor(255 * risk);
                             const blue = Math.floor(255 * (1 - risk));
@@ -180,7 +199,7 @@
                             callbacks: {
                                 label: (context) => {
                                     const price = context.raw;
-                                    const risk = riskLevels[context.dataIndex];
+                                    const risk = risks[context.dataIndex];
                                     return `Price: $${price.toFixed(6)} | Risk: ${(risk * 100).toFixed(2)}%`;
                                 }
                             }
@@ -189,8 +208,15 @@
                 }
             });
 
+            // Clear any existing risk keys
+            const existingRiskKey = document.querySelector('.risk-key');
+            if (existingRiskKey) {
+                existingRiskKey.remove();
+            }
+
             // Add risk key to the chart
             const riskKey = document.createElement('div');
+            riskKey.className = 'risk-key';
             riskKey.innerHTML = `
                 <div style="position: absolute; right: 20px; top: 20px; background: rgba(255, 255, 255, 0.8); padding: 10px; border-radius: 4px;">
                     <strong>Risk Key:</strong>
@@ -209,9 +235,22 @@
 
         // Initialize the application
         async function initialize() {
-            historicalData = await fetchHistoricalData();
-            if (historicalData) {
-                updateHeatmap();
+            try {
+                // Fetch historical data first
+                historicalData = await fetchHistoricalData();
+                if (historicalData) {
+                    updateHeatmap();
+                }
+                
+                // Then fetch latest data for the timestamp
+                const latestData = await fetchLatestData();
+                if (latestData && latestData.latest_date) {
+                    document.getElementById('updateTime').textContent = `Last updated: ${latestData.latest_date}`;
+                }
+            } catch (error) {
+                console.error('Initialization error:', error);
+                document.getElementById('errorMessage').textContent = `Initialization error: ${error.message}`;
+                document.getElementById('errorMessage').style.display = 'block';
             }
         }
 
