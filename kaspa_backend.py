@@ -2,6 +2,7 @@ import os
 from flask import Flask, jsonify, request
 import requests
 import pandas as pd
+import numpy as np
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask_cors import CORS  # Import CORS
 
@@ -46,10 +47,27 @@ def fetch_kaspa_data():
         # Drop the timestamp column
         df = df.drop(columns=['timestamp'])
 
-        # Calculate risk based on price position
+        # Calculate risk metrics
         min_price = df['price'].min()
         max_price = df['price'].max()
-        df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Corrected risk calculation
+        df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Price-based risk
+
+        # Calculate volatility (30-day rolling standard deviation)
+        df['volatility'] = df['price'].rolling(window=30).std()
+
+        # Calculate RSI (Relative Strength Index)
+        delta = df['price'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+
+        # Calculate moving averages (50-day and 200-day)
+        df['ma_50'] = df['price'].rolling(window=50).mean()
+        df['ma_200'] = df['price'].rolling(window=200).mean()
+
+        # Calculate risk/reward ratio (simplified)
+        df['risk_reward'] = df['price'].pct_change(periods=30) / df['volatility']
 
         # Store the latest data
         latest_data = {
@@ -109,10 +127,27 @@ def get_historical_data():
         df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
         df = df.drop(columns=['timestamp'])
 
-        # Calculate risk based on price position
+        # Calculate risk metrics
         min_price = df['price'].min()
         max_price = df['price'].max()
-        df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Corrected risk calculation
+        df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Price-based risk
+
+        # Calculate volatility (30-day rolling standard deviation)
+        df['volatility'] = df['price'].rolling(window=30).std()
+
+        # Calculate RSI (Relative Strength Index)
+        delta = df['price'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+
+        # Calculate moving averages (50-day and 200-day)
+        df['ma_50'] = df['price'].rolling(window=50).mean()
+        df['ma_200'] = df['price'].rolling(window=200).mean()
+
+        # Calculate risk/reward ratio (simplified)
+        df['risk_reward'] = df['price'].pct_change(periods=30) / df['volatility']
 
         # Prepare data for the frontend
         cleaned_data = df.dropna(subset=['risk'])
@@ -120,6 +155,11 @@ def get_historical_data():
             'dates': cleaned_data['date'].dt.strftime('%Y-%m-%d').tolist(),
             'prices': cleaned_data['price'].tolist(),
             'risks': cleaned_data['risk'].tolist(),
+            'volatility': cleaned_data['volatility'].tolist(),
+            'rsi': cleaned_data['rsi'].tolist(),
+            'ma_50': cleaned_data['ma_50'].tolist(),
+            'ma_200': cleaned_data['ma_200'].tolist(),
+            'risk_reward': cleaned_data['risk_reward'].tolist(),
         }
         return jsonify(historical_chart_data)
     except Exception as e:
