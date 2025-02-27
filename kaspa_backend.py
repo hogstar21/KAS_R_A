@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import requests
 import pandas as pd
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -21,7 +21,7 @@ def fetch_kaspa_data():
         # Parameters for the API request
         params = {
             'vs_currency': 'usd',  # Currency to compare against (USD)
-            'days': '365',         # Number of days of historical data
+            'days': 'max',         # Fetch entire history
             'interval': 'daily'    # Data interval (daily)
         }
 
@@ -46,16 +46,10 @@ def fetch_kaspa_data():
         # Drop the timestamp column
         df = df.drop(columns=['timestamp'])
 
-        # Calculate risk metrics
-        df['daily_return'] = df['price'].pct_change()
-        df['volatility'] = df['daily_return'].rolling(window=7).std()  # 7-day rolling volatility
-        df['cumulative_return'] = (1 + df['daily_return']).cumprod()
-        df['drawdown'] = df['cumulative_return'] / df['cumulative_return'].cummax() - 1
-        max_drawdown = df['drawdown'].min()
-
-        # Calculate 24-hour and 7-day price changes
-        price_change_24h = ((df['price'].iloc[-1] - df['price'].iloc[-2]) / df['price'].iloc[-2]) * 100
-        price_change_7d = ((df['price'].iloc[-1] - df['price'].iloc[-8]) / df['price'].iloc[-8]) * 100
+        # Calculate risk based on price position
+        min_price = df['price'].min()
+        max_price = df['price'].max()
+        df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Corrected risk calculation
 
         # Store the latest data
         latest_data = {
@@ -63,10 +57,8 @@ def fetch_kaspa_data():
             'latest_market_cap': round(df['market_cap'].iloc[-1], 2),          # Market cap (rounded)
             'latest_price': round(df['price'].iloc[-1], 6),                    # Price (rounded)
             'latest_volume': round(df['volume'].iloc[-1], 2),                  # Volume (rounded)
-            'max_drawdown': round(max_drawdown, 4),                           # Max drawdown (rounded)
-            'volatility': round(df['volatility'].iloc[-1], 4),                # Volatility (rounded)
-            'price_change_24h': round(price_change_24h, 2),                   # 24h price change (rounded)
-            'price_change_7d': round(price_change_7d, 2)                      # 7d price change (rounded)
+            'min_price': round(min_price, 6),                                  # Min price (rounded)
+            'max_price': round(max_price, 6),                                  # Max price (rounded)
         }
 
         # Update historical data
@@ -87,27 +79,51 @@ scheduler.start()
 def home():
     return "Welcome to the Kaspa Risk Metrics API! Use the /data endpoint to get metrics."
 
-# Live data route
-@app.route('/data/live')
-def get_live_data():
-    return jsonify(latest_data)
-
 # Historical data route
 @app.route('/data/historical')
 def get_historical_data():
-    if historical_data.empty:
-        return jsonify({'error': 'No historical data available'}), 404
+    time_frame = request.args.get('timeFrame', 'all')  # Default to entire history
+    days = {
+        '1w': 7,
+        '1m': 30,
+        '3m': 90,
+        '1y': 365,
+        'all': 'max',  # Fetch entire history
+    }.get(time_frame, 'max')  # Default to entire history if invalid time frame
 
-    # Remove rows with NaN values in the 'volatility' column
-    cleaned_data = historical_data.dropna(subset=['volatility'])
+    try:
+        # Fetch data from CoinGecko
+        url = "https://api.coingecko.com/api/v3/coins/kaspa/market_chart"
+        params = {
+            'vs_currency': 'usd',
+            'days': days,
+            'interval': 'daily',
+        }
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
 
-    # Prepare historical data for the chart
-    historical_chart_data = {
-        'dates': cleaned_data['date'].dt.strftime('%Y-%m-%d').tolist(),  # Dates as strings
-        'prices': cleaned_data['price'].tolist(),                        # Price data
-        'risks': cleaned_data['volatility'].tolist()                     # Risk data (volatility)
-    }
-    return jsonify(historical_chart_data)
+        # Process data
+        prices = data['prices']
+        df = pd.DataFrame(prices, columns=['timestamp', 'price'])
+        df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df = df.drop(columns=['timestamp'])
+
+        # Calculate risk based on price position
+        min_price = df['price'].min()
+        max_price = df['price'].max()
+        df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Corrected risk calculation
+
+        # Prepare data for the frontend
+        cleaned_data = df.dropna(subset=['risk'])
+        historical_chart_data = {
+            'dates': cleaned_data['date'].dt.strftime('%Y-%m-%d').tolist(),
+            'prices': cleaned_data['price'].tolist(),
+            'risks': cleaned_data['risk'].tolist(),
+        }
+        return jsonify(historical_chart_data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     # Fetch data immediately on startup
