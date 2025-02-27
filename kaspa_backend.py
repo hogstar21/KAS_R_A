@@ -226,9 +226,9 @@ def fetch_kaspa_data():
         
         # Combine all metrics into weighted risk score with adjustable weights
         weights = {
-            'volatility': 0.15,  # Higher weight for volatility
-            'technical': 0.15,   # Technical indicators
-            'sentiment': 0.50,   # Market sentiment
+            'volatility': 0.10,  # Higher weight for volatility
+            'technical': 0.10,   # Technical indicators
+            'sentiment': 0.60,   # Market sentiment
             'network': 0.05,     # Network activity
             'valuation': 0.15    # Risk/reward and valuation
         }
