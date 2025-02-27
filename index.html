@@ -32,10 +32,66 @@
       font-size: 16px;
       cursor: pointer;
     }
+    .description {
+      max-width: 800px;
+      margin: 0 auto 20px;
+      line-height: 1.6;
+    }
+    .description h2 {
+      color: #333;
+    }
+    .description ul {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+    .description ul li {
+      margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
   <h1>Kaspa ($KAS) Risk Metric Heatmap</h1>
+
+  <!-- Description Section -->
+  <div class="description">
+    <h2>How the Kaspa Risk Metric Heatmap Works</h2>
+    <p>
+      A Kaspa risk metric heatmap combines several key metrics to gauge the overall risk level associated with Kaspa's price, volatility, and market behavior. Here's a breakdown of how it can be calculated:
+    </p>
+    <ul>
+      <li>
+        <strong>Volatility (Price Fluctuations):</strong> The heatmap tracks historical price volatility, such as the standard deviation of Kaspa's price over a given period (e.g., 30 days). Higher volatility indicates higher risk.
+      </li>
+      <li>
+        <strong>Market Sentiment:</strong> Market sentiment analysis uses metrics like the Fear & Greed Index, on-chain data (such as transaction volume or wallet behavior), or social media sentiment to assess investor psychology. A high level of fear may indicate increased risk, while greed can suggest overconfidence.
+      </li>
+      <li>
+        <strong>Network Activity:</strong> Metrics like transaction counts, active addresses, and network hash rate provide insight into how active and secure the Kaspa network is. A sudden decrease in network activity or hash rate can signal potential risks.
+      </li>
+      <li>
+        <strong>Risk/Reward Ratio:</strong> This is the ratio of potential return to risk, considering price momentum, on-chain metrics, and market volatility. A favorable ratio suggests lower risk.
+      </li>
+      <li>
+        <strong>Technical Indicators:</strong> Tools like moving averages (e.g., 50-day or 200-day MA) and Relative Strength Index (RSI) are commonly used to assess overbought or oversold conditions. These indicators help signal potential reversal points or market exhaustion, indicating higher or lower risk.
+      </li>
+      <li>
+        <strong>On-Chain Metrics:</strong> Metrics like the NVT (Network Value to Transaction) ratio, which compares the network value to transaction volume, can be included to identify if Kaspa is overvalued relative to its transactional usage.
+      </li>
+    </ul>
+    <p>
+      The heatmap assigns a color code based on the values of these metrics, where typically:
+    </p>
+    <ul>
+      <li><span style="color: green;">Green</span> signals low risk</li>
+      <li><span style="color: yellow;">Yellow</span> signals moderate risk</li>
+      <li><span style="color: red;">Red</span> signals high risk</li>
+    </ul>
+    <p>
+      By analyzing these combined indicators, the heatmap provides a quick visual representation of Kaspa’s risk level at any given moment.
+    </p>
+  </div>
+
+  <!-- Time Frame Buttons -->
   <div class="time-frame-buttons">
     <button onclick="updateChart('1w')">1 Week</button>
     <button onclick="updateChart('1m')">1 Month</button>
@@ -43,6 +99,8 @@
     <button onclick="updateChart('1y')">1 Year</button>
     <button onclick="updateChart('all')">All History</button>
   </div>
+
+  <!-- Heatmap Chart -->
   <div id="heatmap"></div>
 
   <script>
