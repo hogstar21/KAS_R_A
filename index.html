@@ -142,31 +142,35 @@
         }
 
         // Function to fetch historical data
-        async function fetchHistoricalData() {
-            try {
-                const response = await fetch(`${backendUrl}/data/historical?timeFrame=all`);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.error) {
-                    document.getElementById('errorMessage').textContent = `Error: ${data.error}`;
-                    document.getElementById('errorMessage').style.display = 'block';
-                    return null;
-                }
-                
-                document.getElementById('errorMessage').style.display = 'none';
-                historicalData = data; // Store historical data
-                return data;
-            } catch (error) {
-                console.error('Error fetching historical data:', error);
-                document.getElementById('errorMessage').textContent = `Error: ${error.message}`;
-                document.getElementById('errorMessage').style.display = 'block';
-                return null;
-            }
+       async function fetchHistoricalData() {
+    try {
+        const response = await fetch(`${backendUrl}/data/historical?timeFrame=all`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            document.getElementById('errorMessage').textContent = `Error: ${data.error}`;
+            document.getElementById('errorMessage').style.display = 'block';
+            return null;
+        }
+        
+        document.getElementById('errorMessage').style.display = 'none';
+        
+        // Debug: Log the data returned from the backend
+        console.log("Historical Data Received:", data);
+        
+        return data;
+    } catch (error) {
+        console.error('Error fetching historical data:', error);
+        document.getElementById('errorMessage').textContent = `Error: ${error.message}`;
+        document.getElementById('errorMessage').style.display = 'block';
+        return null;
+    }
+}
         }
 
         // Function to get risk color based on weighted risk value
