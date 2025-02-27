@@ -1,261 +1,113 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kaspa Risk Metric Heatmap</title>
-    <!-- Chart.js for data visualization -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Date adapter for Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            padding: 20px;
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-        }
-        .chart-container {
-            position: relative;
-            height: 600px;
-            margin-top: 20px;
-        }
-        #updateTime {
-            text-align: center;
-            color: #666;
-            font-size: 14px;
-            margin-top: 5px;
-        }
-        .loading {
-            text-align: center;
-            padding: 30px;
-            font-style: italic;
-            color: #666;
-        }
-        .error-message {
-            color: #d9534f;
-            text-align: center;
-            padding: 20px;
-            background-color: #f9f2f2;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            display: none;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Kaspa Risk Metric Heatmap</h1>
-        <p id="updateTime">Last updated: Loading...</p>
-        
-        <div class="error-message" id="errorMessage"></div>
-        
-        <div class="chart-container">
-            <canvas id="riskHeatmapChart"></canvas>
-        </div>
-    </div>
+function updateHeatmap() {
+    if (!historicalData) return;
 
-    <script>
-        // Global variables
-        let heatmapChart;
-        let historicalData = null;
+    const ctx = document.getElementById('riskHeatmapChart').getContext('2d');
 
-        // Backend URL - Replace with your actual backend URL
-        const backendUrl = 'https://kas-risk-app.onrender.com'; 
+    // Extract data
+    const dates = historicalData.dates;
+    const prices = historicalData.prices;
+    const risks = historicalData.risks; // Use pre-calculated risk from the backend
 
-        // Function to fetch latest data
-        async function fetchLatestData() {
-            try {
-                const response = await fetch(`${backendUrl}/data/latest`);
-                const data = await response.json();
-                
-                if (data.error) {
-                    document.getElementById('errorMessage').textContent = `Error: ${data.error}`;
-                    document.getElementById('errorMessage').style.display = 'block';
-                    return null;
-                }
-                
-                document.getElementById('errorMessage').style.display = 'none';
-                // Update the last updated timestamp
-                if (data.latest_date) {
-                    document.getElementById('updateTime').textContent = `Last updated: ${data.latest_date}`;
-                }
-                return data;
-            } catch (error) {
-                console.error('Error fetching latest data:', error);
-                document.getElementById('errorMessage').textContent = `Error: ${error.message}`;
-                document.getElementById('errorMessage').style.display = 'block';
-                return null;
-            }
-        }
+    // Destroy previous chart if it exists
+    if (heatmapChart) {
+        heatmapChart.destroy();
+    }
 
-        // Function to fetch historical data
-        async function fetchHistoricalData() {
-            try {
-                const response = await fetch(`${backendUrl}/data/historical?timeFrame=all`);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.error) {
-                    document.getElementById('errorMessage').textContent = `Error: ${data.error}`;
-                    document.getElementById('errorMessage').style.display = 'block';
-                    return null;
-                }
-                
-                document.getElementById('errorMessage').style.display = 'none';
-                return data;
-            } catch (error) {
-                console.error('Error fetching historical data:', error);
-                document.getElementById('errorMessage').textContent = `Error: ${error.message}`;
-                document.getElementById('errorMessage').style.display = 'block';
-                return null;
-            }
-        }
+    // Function to generate a color based on risk level
+    function getRiskColor(risk) {
+        // Map risk (0 to 1) to a color gradient from dark blue to dark red
+        const hue = (1 - risk) * 240; // Hue ranges from 240 (blue) to 0 (red)
+        return `hsl(${hue}, 100%, 50%)`; // Use HSL for smooth color transition
+    }
 
-        // Function to update the heatmap
-        function updateHeatmap() {
-            if (!historicalData) return;
-
-            const ctx = document.getElementById('riskHeatmapChart').getContext('2d');
-
-            // Extract data
-            const dates = historicalData.dates;
-            const prices = historicalData.prices;
-            const risks = historicalData.risks; // Use pre-calculated risk from the backend
-
-            // Destroy previous chart if it exists
-            if (heatmapChart) {
-                heatmapChart.destroy();
-            }
-
-            // Create the heatmap
-            heatmapChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: dates,
-                    datasets: [{
-                        label: 'Price',
-                        data: prices,
-                        borderColor: 'rgba(75, 192, 192, 0.2)',
-                        backgroundColor: risks.map(risk => {
-                            // Map risk level to color
-                            const red = Math.floor(255 * risk);
-                            const blue = Math.floor(255 * (1 - risk));
-                            return `rgba(${red}, 0, ${blue}, 0.6)`;
-                        }),
-                        borderWidth: 1,
-                        fill: true,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: 'day',
-                                displayFormats: {
-                                    day: 'MMM d',
-                                }
-                            },
-                            grid: {
-                                display: false,
-                            },
-                            title: {
-                                display: true,
-                                text: 'Date',
-                            }
-                        },
-                        y: {
-                            beginAtZero: false,
-                            title: {
-                                display: true,
-                                text: 'Price (USD)',
-                            }
+    // Create the scatter plot
+    heatmapChart = new Chart(ctx, {
+        type: 'scatter', // Use scatter plot for dots
+        data: {
+            labels: dates,
+            datasets: [{
+                label: 'Price',
+                data: prices.map((price, index) => ({
+                    x: new Date(dates[index]), // X-axis: Date
+                    y: price, // Y-axis: Price
+                })),
+                backgroundColor: risks.map(risk => getRiskColor(risk)), // Color based on risk
+                borderColor: 'rgba(0, 0, 0, 0.2)', // Border color for dots
+                borderWidth: 1,
+                pointRadius: 5, // Size of dots
+                pointHoverRadius: 7, // Size of dots on hover
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'day',
+                        displayFormats: {
+                            day: 'MMM d',
                         }
                     },
-                    plugins: {
-                        legend: {
-                            display: false,
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: (context) => {
-                                    const price = context.raw;
-                                    const risk = risks[context.dataIndex];
-                                    return `Price: $${price.toFixed(6)} | Risk: ${(risk * 100).toFixed(2)}%`;
-                                }
-                            }
+                    grid: {
+                        display: false,
+                    },
+                    title: {
+                        display: true,
+                        text: 'Date',
+                    }
+                },
+                y: {
+                    beginAtZero: false,
+                    title: {
+                        display: true,
+                        text: 'Price (USD)',
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false,
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const price = context.raw.y;
+                            const risk = risks[context.dataIndex];
+                            return `Price: $${price.toFixed(6)} | Risk: ${(risk * 100).toFixed(2)}%`;
                         }
                     }
                 }
-            });
-
-            // Clear any existing risk keys
-            const existingRiskKey = document.querySelector('.risk-key');
-            if (existingRiskKey) {
-                existingRiskKey.remove();
-            }
-
-            // Add risk key to the chart
-            const riskKey = document.createElement('div');
-            riskKey.className = 'risk-key';
-            riskKey.innerHTML = `
-                <div style="position: absolute; right: 20px; top: 20px; background: rgba(255, 255, 255, 0.8); padding: 10px; border-radius: 4px;">
-                    <strong>Risk Key:</strong>
-                    <div style="display: flex; align-items: center; margin-top: 5px;">
-                        <div style="width: 20px; height: 20px; background: darkblue; margin-right: 5px;"></div>
-                        <span>Low Risk (Buy)</span>
-                    </div>
-                    <div style="display: flex; align-items: center; margin-top: 5px;">
-                        <div style="width: 20px; height: 20px; background: darkred; margin-right: 5px;"></div>
-                        <span>High Risk (Sell)</span>
-                    </div>
-                </div>
-            `;
-            document.querySelector('.chart-container').appendChild(riskKey);
-        }
-
-        // Initialize the application
-        async function initialize() {
-            try {
-                // Fetch historical data first
-                historicalData = await fetchHistoricalData();
-                if (historicalData) {
-                    updateHeatmap();
-                }
-                
-                // Then fetch latest data for the timestamp
-                const latestData = await fetchLatestData();
-                if (latestData && latestData.latest_date) {
-                    document.getElementById('updateTime').textContent = `Last updated: ${latestData.latest_date}`;
-                }
-            } catch (error) {
-                console.error('Initialization error:', error);
-                document.getElementById('errorMessage').textContent = `Initialization error: ${error.message}`;
-                document.getElementById('errorMessage').style.display = 'block';
             }
         }
+    });
 
-        // Start the application
-        initialize();
-    </script>
-</body>
-</html>
+    // Clear any existing risk keys
+    const existingRiskKey = document.querySelector('.risk-key');
+    if (existingRiskKey) {
+        existingRiskKey.remove();
+    }
+
+    // Add risk key to the chart
+    const riskKey = document.createElement('div');
+    riskKey.className = 'risk-key';
+    riskKey.innerHTML = `
+        <div style="position: absolute; right: 20px; top: 20px; background: rgba(255, 255, 255, 0.8); padding: 10px; border-radius: 4px;">
+            <strong>Risk Key:</strong>
+            <div style="display: flex; align-items: center; margin-top: 5px;">
+                <div style="width: 20px; height: 20px; background: ${getRiskColor(0)}; margin-right: 5px;"></div>
+                <span>Low Risk (Buy)</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-top: 5px;">
+                <div style="width: 20px; height: 20px; background: ${getRiskColor(0.5)}; margin-right: 5px;"></div>
+                <span>Medium Risk</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-top: 5px;">
+                <div style="width: 20px; height: 20px; background: ${getRiskColor(1)}; margin-right: 5px;"></div>
+                <span>High Risk (Sell)</span>
+            </div>
+        </div>
+    `;
+    document.querySelector('.chart-container').appendChild(riskKey);
+}
