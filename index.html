@@ -1,134 +1,423 @@
-import os
-import time
-from flask import Flask, jsonify, request
-import requests
-import pandas as pd
-from apscheduler.schedulers.background import BackgroundScheduler
-from flask_cors import CORS  # Import CORS
-
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
-
-# Global variable to store the latest data
-latest_data = {}
-historical_data = pd.DataFrame()
-
-def fetch_kaspa_data():
-    global latest_data, historical_data
-    try:
-        # CoinGecko API endpoint for Kaspa (KAS)
-        url = "https://api.coingecko.com/api/v3/coins/kaspa/market_chart"
-
-        # Parameters for the API request
-        params = {
-            'vs_currency': 'usd',
-            'days': 3650,  # ~10 years of data
-            'interval': 'daily',
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaspa Risk Metrics Dashboard</title>
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
         }
-
-        # Make the API request
-        response = requests.get(url, params=params)
-        response.raise_for_status()  # Raise an error for bad status codes
-        data = response.json()
-
-        # Process data
-        prices = data['prices']
-        df = pd.DataFrame(prices, columns=['timestamp', 'price'])
-        df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df = df.drop(columns=['timestamp'])
-
-        # Calculate risk metrics
-        min_price = df['price'].min()
-        max_price = df['price'].max()
-
-        # Handle division by zero
-        if max_price == min_price:
-            df['risk'] = 0  # Set risk to 0 if max_price == min_price
-        else:
-            df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Price-based risk
-
-        # Calculate volatility (30-day rolling standard deviation)
-        df['volatility'] = df['price'].rolling(window=30).std()
-
-        # Handle NaN values in volatility
-        df['volatility'] = df['volatility'].fillna(0)  # Replace NaN with 0
-
-        # Calculate RSI (Relative Strength Index)
-        delta = df['price'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        df['rsi'] = 100 - (100 / (1 + rs))
-
-        # Handle NaN values in RSI
-        df['rsi'] = df['rsi'].fillna(50)  # Replace NaN with 50 (neutral RSI)
-
-        # Calculate moving averages (50-day and 200-day)
-        df['ma_50'] = df['price'].rolling(window=50).mean()
-        df['ma_200'] = df['price'].rolling(window=200).mean()
-
-        # Handle NaN values in moving averages
-        df['ma_50'] = df['ma_50'].fillna(df['price'])  # Replace NaN with current price
-        df['ma_200'] = df['ma_200'].fillna(df['price'])  # Replace NaN with current price
-
-        # Calculate risk/reward ratio (simplified)
-        df['risk_reward'] = df['price'].pct_change(periods=30) / df['volatility']
-
-        # Handle NaN values in risk/reward ratio
-        df['risk_reward'] = df['risk_reward'].fillna(0)  # Replace NaN with 0
-
-        # Store the latest data
-        latest_data = {
-            'latest_date': df['date'].iloc[-1].strftime('%Y-%m-%d %H:%M:%S'),  # Timestamp
-            'latest_market_cap': round(df['market_cap'].iloc[-1], 2),          # Market cap (rounded)
-            'latest_price': round(df['price'].iloc[-1], 6),                    # Price (rounded)
-            'latest_volume': round(df['volume'].iloc[-1], 2),                  # Volume (rounded)
-            'min_price': round(min_price, 6),                                  # Min price (rounded)
-            'max_price': round(max_price, 6),                                  # Max price (rounded)
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
         }
-
-        # Update historical data
-        historical_data = df
-    except Exception as e:
-        # Handle errors gracefully
-        latest_data = {
-            'error': str(e)
+        h1 {
+            color: #333;
+            text-align: center;
         }
+        .metrics-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .metric-card {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            width: calc(33.33% - 20px);
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+        .metric-title {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-top: 20px;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #f1f1f1;
+            border: none;
+            border-radius: 5px 5px 0 0;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .time-filters {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .time-filter {
+            padding: 8px 15px;
+            margin: 0 5px;
+            cursor: pointer;
+            background-color: #f1f1f1;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .time-filter.active {
+            background-color: #4CAF50;
+            color: white;
+            border-color: #4CAF50;
+        }
+        @media (max-width: 768px) {
+            .metric-card {
+                width: calc(50% - 15px);
+            }
+        }
+        @media (max-width: 480px) {
+            .metric-card {
+                width: 100%;
+            }
+        }
+        #updateTime {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .loading {
+            text-align: center;
+            padding: 30px;
+            font-style: italic;
+            color: #666;
+        }
+        .error-message {
+            color: #d9534f;
+            text-align: center;
+            padding: 20px;
+            background-color: #f9f2f2;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Kaspa Risk Metrics Dashboard</h1>
+        <p id="updateTime">Last updated: Loading...</p>
+        
+        <div class="error-message" id="errorMessage"></div>
+        
+        <div class="metrics-container" id="metricsContainer">
+            <div class="loading">Loading metrics...</div>
+        </div>
+        
+        <div class="time-filters">
+            <button class="time-filter active" data-time="1w">1 Week</button>
+            <button class="time-filter" data-time="1m">1 Month</button>
+            <button class="time-filter" data-time="3m">3 Months</button>
+            <button class="time-filter" data-time="1y">1 Year</button>
+            <button class="time-filter" data-time="all">All Time</button>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab active" data-metric="price">Price</button>
+            <button class="tab" data-metric="risk">Risk</button>
+            <button class="tab" data-metric="volatility">Volatility</button>
+            <button class="tab" data-metric="rsi">RSI</button>
+            <button class="tab" data-metric="moving-averages">Moving Averages</button>
+            <button class="tab" data-metric="risk-reward">Risk/Reward</button>
+        </div>
+        
+        <div class="chart-container">
+            <canvas id="metricsChart"></canvas>
+        </div>
+    </div>
 
-# Schedule data fetching every hour
-scheduler = BackgroundScheduler()
-scheduler.add_job(fetch_kaspa_data, 'interval', hours=1)
-scheduler.start()
-
-# Root route
-@app.route('/')
-def home():
-    return "Welcome to the Kaspa Risk Metrics API! Use the /data endpoint to get metrics."
-
-# Historical data route
-@app.route('/data/historical')
-def get_historical_data():
-    if historical_data.empty:
-        return jsonify({'error': 'No historical data available'}), 404
-
-    # Prepare historical data for the chart
-    cleaned_data = historical_data.dropna(subset=['risk'])
-    historical_chart_data = {
-        'dates': cleaned_data['date'].dt.strftime('%Y-%m-%d').tolist(),
-        'prices': cleaned_data['price'].tolist(),
-        'risks': cleaned_data['risk'].tolist(),
-        'volatility': cleaned_data['volatility'].tolist(),
-        'rsi': cleaned_data['rsi'].tolist(),
-        'ma_50': cleaned_data['ma_50'].tolist(),
-        'ma_200': cleaned_data['ma_200'].tolist(),
-        'risk_reward': cleaned_data['risk_reward'].tolist(),
-    }
-    return jsonify(historical_chart_data)
-
-if __name__ == '__main__':
-    # Fetch data immediately on startup
-    fetch_kaspa_data()
-
-    # Bind to the PORT environment variable (for Render) or default to 5000
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    <script>
+        // Global variables
+        let chart;
+        let currentMetric = 'price';
+        let currentTimeFrame = '1w';
+        let historicalData = null;
+        
+        // Format numbers with commas for thousands
+        function formatNumber(num) {
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+        
+        // Function to fetch and display latest metrics
+        async function fetchLatestMetrics() {
+            try {
+                const response = await fetch('/data/latest');
+                const data = await response.json();
+                
+                if (data.error) {
+                    document.getElementById('errorMessage').textContent = `Error: ${data.error}`;
+                    document.getElementById('errorMessage').style.display = 'block';
+                    return;
+                }
+                
+                document.getElementById('errorMessage').style.display = 'none';
+                document.getElementById('updateTime').textContent = `Last updated: ${data.latest_date}`;
+                
+                // Clear loading message
+                const metricsContainer = document.getElementById('metricsContainer');
+                metricsContainer.innerHTML = '';
+                
+                // Create metric cards
+                const metrics = [
+                    { title: 'Current Price', value: `$${data.latest_price}` },
+                    { title: 'Market Cap', value: `$${formatNumber(data.latest_market_cap)}` },
+                    { title: '24h Volume', value: `$${formatNumber(data.latest_volume)}` },
+                    { title: 'All-Time High', value: `$${data.max_price}` },
+                    { title: 'All-Time Low', value: `$${data.min_price}` },
+                    { title: 'Price Range', value: `${((data.latest_price - data.min_price) / (data.max_price - data.min_price) * 100).toFixed(2)}%` }
+                ];
+                
+                metrics.forEach(metric => {
+                    const card = document.createElement('div');
+                    card.className = 'metric-card';
+                    card.innerHTML = `
+                        <div class="metric-title">${metric.title}</div>
+                        <div class="metric-value">${metric.value}</div>
+                    `;
+                    metricsContainer.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Error fetching latest metrics:', error);
+                document.getElementById('errorMessage').textContent = `Error: ${error.message}`;
+                document.getElementById('errorMessage').style.display = 'block';
+            }
+        }
+        
+        // Function to fetch historical data
+        async function fetchHistoricalData() {
+            try {
+                const response = await fetch(`/data/historical?timeFrame=${currentTimeFrame}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    document.getElementById('errorMessage').textContent = `Error: ${data.error}`;
+                    document.getElementById('errorMessage').style.display = 'block';
+                    return null;
+                }
+                
+                document.getElementById('errorMessage').style.display = 'none';
+                return data;
+            } catch (error) {
+                console.error('Error fetching historical data:', error);
+                document.getElementById('errorMessage').textContent = `Error: ${error.message}`;
+                document.getElementById('errorMessage').style.display = 'block';
+                return null;
+            }
+        }
+        
+        // Function to update the chart
+        function updateChart() {
+            if (!historicalData) return;
+            
+            const ctx = document.getElementById('metricsChart').getContext('2d');
+            
+            // Configuration based on selected metric
+            const chartConfig = {
+                price: {
+                    label: 'Price (USD)',
+                    data: historicalData.prices,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                },
+                risk: {
+                    label: 'Risk',
+                    data: historicalData.risks,
+                    borderColor: 'rgb(255, 99, 132)',
+                    tension: 0.1
+                },
+                volatility: {
+                    label: 'Volatility',
+                    data: historicalData.volatility,
+                    borderColor: 'rgb(255, 159, 64)',
+                    tension: 0.1
+                },
+                rsi: {
+                    label: 'RSI',
+                    data: historicalData.rsi,
+                    borderColor: 'rgb(153, 102, 255)',
+                    tension: 0.1
+                },
+                'moving-averages': {
+                    label: 'Price & Moving Averages',
+                    data: historicalData.prices,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1,
+                    additional: [
+                        {
+                            label: '50-Day MA',
+                            data: historicalData.ma_50,
+                            borderColor: 'rgb(255, 99, 132)',
+                            borderWidth: 1.5,
+                            pointRadius: 0
+                        },
+                        {
+                            label: '200-Day MA',
+                            data: historicalData.ma_200,
+                            borderColor: 'rgb(54, 162, 235)',
+                            borderWidth: 1.5,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                'risk-reward': {
+                    label: 'Risk/Reward Ratio',
+                    data: historicalData.risk_reward,
+                    borderColor: 'rgb(54, 162, 235)',
+                    tension: 0.1
+                }
+            };
+            
+            const selectedConfig = chartConfig[currentMetric];
+            
+            // Destroy previous chart if it exists
+            if (chart) {
+                chart.destroy();
+            }
+            
+            // Create datasets based on metric selection
+            let datasets = [
+                {
+                    label: selectedConfig.label,
+                    data: selectedConfig.data,
+                    borderColor: selectedConfig.borderColor,
+                    backgroundColor: selectedConfig.borderColor.replace('rgb', 'rgba').replace(')', ', 0.1)'),
+                    borderWidth: 2,
+                    pointRadius: 1,
+                    tension: selectedConfig.tension,
+                    fill: true
+                }
+            ];
+            
+            // Add additional datasets if any
+            if (selectedConfig.additional) {
+                datasets = datasets.concat(selectedConfig.additional);
+            }
+            
+            // Create the chart
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: historicalData.dates,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            },
+                            beginAtZero: currentMetric === 'risk' || currentMetric === 'risk-reward'
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: currentMetric === 'moving-averages',
+                            position: 'top'
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+        
+        // Initialize the application
+        async function initialize() {
+            await fetchLatestMetrics();
+            
+            historicalData = await fetchHistoricalData();
+            if (historicalData) {
+                updateChart();
+            }
+            
+            // Set up event listeners
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    // Update active tab
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Update current metric
+                    currentMetric = this.getAttribute('data-metric');
+                    
+                    // Update chart
+                    updateChart();
+                });
+            });
+            
+            document.querySelectorAll('.time-filter').forEach(filter => {
+                filter.addEventListener('click', async function() {
+                    // Update active filter
+                    document.querySelectorAll('.time-filter').forEach(f => f.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Update current time frame
+                    currentTimeFrame = this.getAttribute('data-time');
+                    
+                    // Fetch new data and update chart
+                    historicalData = await fetchHistoricalData();
+                    if (historicalData) {
+                        updateChart();
+                    }
+                });
+            });
+        }
+        
+        // Start the application
+        initialize();
+        
+        // Refresh data every 5 minutes
+        setInterval(async () => {
+            await fetchLatestMetrics();
+            historicalData = await fetchHistoricalData();
+            if (historicalData) {
+                updateChart();
+            }
+        }, 5 * 60 * 1000);
+    </script>
+</body>
+</html>
