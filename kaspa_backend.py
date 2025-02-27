@@ -22,7 +22,7 @@ historical_data = pd.DataFrame()
 def fetch_kaspa_data():
     global latest_data, historical_data
     try:
-        # CoinGecko API endpoint for current data
+        # Fetch current data from CoinGecko
         latest_url = "https://api.coingecko.com/api/v3/simple/price"
         latest_params = {
             'ids': 'kaspa',
@@ -30,115 +30,102 @@ def fetch_kaspa_data():
             'include_market_cap': 'true',
             'include_24hr_vol': 'true'
         }
-        
-        # Make the API request for current data
         response = requests.get(latest_url, params=latest_params)
         response.raise_for_status()
         data = response.json()
-        
-        # Debug: Print the API response
-        print("Latest Data API Response:", data)
-        
-        # Extract current price, market cap, and volume
         kas_data = data['kaspa']
         current_price = kas_data['usd']
         market_cap = kas_data['usd_market_cap']
         volume_24h = kas_data['usd_24h_vol']
-        
-        # Now fetch historical data (limited to 365 days for free API users)
+
+        # Fetch historical data
         historical_url = "https://api.coingecko.com/api/v3/coins/kaspa/market_chart"
         historical_params = {
             'vs_currency': 'usd',
-            'days': '365'  # Limit to 365 days
+            'days': '365'
         }
-        
         historical_response = requests.get(historical_url, params=historical_params)
         historical_response.raise_for_status()
         historical_data_raw = historical_response.json()
-        
-        # Debug: Print the historical data response
-        print("Historical Data API Response:", historical_data_raw)
-        
+
         # Process historical data
         prices = historical_data_raw['prices']
-        timestamps = [x[0] for x in prices]  # Extract timestamps
-        prices = [x[1] for x in prices]      # Extract prices
-        
-        # Create DataFrame
+        timestamps = [x[0] for x in prices]
+        prices = [x[1] for x in prices]
+
         df = pd.DataFrame({
             'timestamp': timestamps,
             'price': prices
         })
-        
-        # Convert timestamp to datetime
         df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
         df = df.drop(columns=['timestamp'])
-        
-        # Sort by date
         df = df.sort_values('date')
-        
-        # Calculate risk metrics
+
+        # Calculate min and max prices
         min_price = df['price'].min()
         max_price = df['price'].max()
-        
-        # Handle division by zero
-        if max_price == min_price:
-            df['risk'] = 0  # Set risk to 0 if max_price == min_price
-        else:
-            df['risk'] = (df['price'] - min_price) / (max_price - min_price)  # Price-based risk
-            
+
+        # Calculate risk (price-based)
+        df['risk'] = (df['price'] - min_price) / (max_price - min_price)
+
         # Calculate volatility (30-day rolling standard deviation)
-        df['volatility'] = df['price'].rolling(window=min(30, len(df))).std()
-        
-        # Handle NaN values in volatility
-        df['volatility'] = df['volatility'].fillna(0)  # Replace NaN with 0
-        
-        # Calculate RSI (Relative Strength Index)
+        df['volatility'] = df['price'].rolling(window=30).std().fillna(0)
+
+        # Calculate RSI
         delta = df['price'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=min(14, len(df)-1)).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=min(14, len(df)-1)).mean()
-        
-        # Avoid division by zero
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss.replace(0, 0.00001)
         df['rsi'] = 100 - (100 / (1 + rs))
-        
-        # Handle NaN values in RSI
-        df['rsi'] = df['rsi'].fillna(50)  # Replace NaN with 50 (neutral RSI)
-        
-        # Calculate moving averages (50-day and 200-day)
-        df['ma_50'] = df['price'].rolling(window=min(50, len(df))).mean()
-        df['ma_200'] = df['price'].rolling(window=min(200, len(df))).mean()
-        
-        # Handle NaN values in moving averages
-        df['ma_50'] = df['ma_50'].fillna(df['price'])  # Replace NaN with current price
-        df['ma_200'] = df['ma_200'].fillna(df['price'])  # Replace NaN with current price
-        
-        # Calculate risk/reward ratio (simplified)
-        df['risk_reward'] = df['price'].pct_change(periods=min(30, len(df)-1)) / (df['volatility'] + 0.00001)  # Avoid division by zero
-        
-        # Handle NaN values in risk/reward ratio
-        df['risk_reward'] = df['risk_reward'].fillna(0)  # Replace NaN with 0
-        
+        df['rsi'] = df['rsi'].fillna(50)
+
+        # Calculate moving averages
+        df['ma_50'] = df['price'].rolling(window=50).mean().fillna(df['price'])
+        df['ma_200'] = df['price'].rolling(window=200).mean().fillna(df['price'])
+
+        # Calculate risk/reward ratio
+        df['risk_reward'] = df['price'].pct_change(periods=30) / (df['volatility'] + 0.00001)
+        df['risk_reward'] = df['risk_reward'].fillna(0)
+
+        # Fetch market sentiment (Fear & Greed Index)
+        sentiment_url = "https://api.alternative.me/fng/"
+        sentiment_response = requests.get(sentiment_url)
+        sentiment_data = sentiment_response.json()
+        fear_greed_index = sentiment_data['data'][0]['value']
+
+        # Fetch network activity (example: transaction count)
+        # Replace with actual API call to fetch transaction count or hash rate
+        df['transaction_count'] = 1000  # Placeholder for now
+
+        # Calculate NVT Ratio (Network Value to Transaction Ratio)
+        df['nvt_ratio'] = market_cap / (df['transaction_count'] + 0.00001)
+
+        # Combine all metrics into a weighted risk score
+        df['weighted_risk'] = (
+            df['risk'] * 0.4 +  # Price-based risk
+            df['volatility'] * 0.2 +  # Volatility
+            (df['rsi'] / 100) * 0.1 +  # RSI
+            (1 - df['risk_reward']) * 0.1 +  # Risk/Reward
+            (df['nvt_ratio'] / df['nvt_ratio'].max()) * 0.2  # NVT Ratio
+        )
+
         # Store the latest data
         latest_data = {
-            'latest_date': df['date'].iloc[-1].strftime('%Y-%m-%d %H:%M:%S'),  # Timestamp
-            'latest_market_cap': round(market_cap, 2),                        # Market cap (rounded)
-            'latest_price': round(current_price, 6),                          # Price (rounded)
-            'latest_volume': round(volume_24h, 2),                            # Volume (rounded)
-            'min_price': round(min_price, 6),                                 # Min price (rounded)
-            'max_price': round(max_price, 6),                                 # Max price (rounded)
+            'latest_date': df['date'].iloc[-1].strftime('%Y-%m-%d %H:%M:%S'),
+            'latest_market_cap': round(market_cap, 2),
+            'latest_price': round(current_price, 6),
+            'latest_volume': round(volume_24h, 2),
+            'min_price': round(min_price, 6),
+            'max_price': round(max_price, 6),
+            'fear_greed_index': fear_greed_index,
         }
-        
+
         # Update historical data
         historical_data = df
-        
-        print("Data successfully fetched from CoinGecko API")
+
     except Exception as e:
-        # Handle errors gracefully
         print(f"Error fetching data: {str(e)}")
-        latest_data = {
-            'error': str(e)
-        }
+        latest_data = {'error': str(e)}
 
 # Ensure CORS headers are on all responses
 @app.after_request
